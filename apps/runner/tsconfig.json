@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/sdk" },
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/core" },
+    { "path": "../../../openstarry_plugin/provider-gemini-oauth" },
+    { "path": "../../../openstarry_plugin/standard-function-fs" },
+    { "path": "../../../openstarry_plugin/standard-function-stdio" }
+  ]
+}

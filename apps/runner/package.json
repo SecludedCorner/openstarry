@@ -1,0 +1,50 @@
+{
+  "name": "@openstarry/runner",
+  "version": "0.1.0-alpha",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "openstarry": "dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsc -b && node -e \"require('fs').cpSync('src/data','dist/data',{recursive:true})\"",
+    "clean": "rimraf --glob dist \"*.tsbuildinfo\"",
+    "dev": "tsc -b --watch",
+    "start": "node dist/bin.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@openstarry/core": "workspace:*",
+    "@openstarry/sdk": "workspace:*",
+    "@openstarry/shared": "workspace:*",
+    "@openstarry-plugin/provider-gemini-oauth": "workspace:*",
+    "@openstarry-plugin/standard-function-fs": "workspace:*",
+    "@openstarry-plugin/standard-function-stdio": "workspace:*",
+    "@openstarry-plugin/standard-function-skill": "workspace:*",
+    "@openstarry-plugin/guide-character-init": "workspace:*",
+    "@openstarry-plugin/transport-websocket": "workspace:*",
+    "@openstarry-plugin/transport-http": "workspace:*",
+    "@openstarry-plugin/web-ui": "workspace:*",
+    "@openstarry-plugin/http-static": "workspace:*",
+    "@openstarry-plugin/tui-dashboard": "workspace:*",
+    "@openstarry-plugin/devtools": "workspace:*",
+    "@openstarry-plugin/workflow-engine": "workspace:*",
+    "@openstarry-plugin/mcp-server": "workspace:*",
+    "@openstarry-plugin/mcp-client": "workspace:*",
+    "@openstarry-plugin/mcp-common": "workspace:*",
+    "@openstarry-plugin/provider-gemini": "workspace:*",
+    "@openstarry-plugin/provider-claude": "workspace:*",
+    "@openstarry-plugin/provider-chatgpt": "workspace:*",
+    "@openstarry-plugin/provider-local-llama": "workspace:*",
+    "@openstarry-plugin/standard-model-selector": "workspace:*",
+    "@openstarry-plugin/standard-core-commands": "workspace:*",
+    "@openstarry-plugin/provider-lmstudio": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "rimraf": "^5.0.0",
+    "vitest": "^4.0.18",
+    "@types/node": "^20.0.0"
+  }
+}

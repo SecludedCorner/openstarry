@@ -1,0 +1,29 @@
+{
+  "name": "@openstarry/plugin-signer",
+  "version": "0.1.0-alpha",
+  "type": "module",
+  "description": "CLI tool for signing OpenStarry plugins with Ed25519/RSA keys",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "openstarry-signer": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf --glob dist \"*.tsbuildinfo\"",
+    "dev": "tsc -b --watch"
+  },
+  "dependencies": {
+    "@openstarry/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "rimraf": "^5.0.0"
+  }
+}

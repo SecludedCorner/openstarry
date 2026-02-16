@@ -1,0 +1,23 @@
+{
+  "name": "openstarry",
+  "version": "0.22.1-beta",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "clean": "pnpm -r run clean",
+    "clean:all": "node scripts/clean-all.mjs",
+    "dev": "pnpm -r run dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:purity": "bash scripts/check-purity.sh"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "rimraf": "^5.0.0",
+    "vitest": "^4.0.18"
+  }
+}

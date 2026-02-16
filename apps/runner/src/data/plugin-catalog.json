@@ -1,0 +1,159 @@
+{
+  "version": "1",
+  "plugins": [
+    {
+      "name": "@openstarry-plugin/standard-function-fs",
+      "description": "File read/write and directory operations",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["standard", "filesystem"]
+    },
+    {
+      "name": "@openstarry-plugin/standard-function-stdio",
+      "description": "Standard I/O input and output tools",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["standard", "io"]
+    },
+    {
+      "name": "@openstarry-plugin/standard-function-skill",
+      "description": "Skill execution and management tools",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["standard", "skill"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-gemini-oauth",
+      "description": "Google Gemini LLM provider with OAuth authentication",
+      "version": "0.19.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "gemini", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/guide-character-init",
+      "description": "Character initialization system prompt guide",
+      "version": "0.19.0",
+      "aggregates": ["IGuide"],
+      "tags": ["guide", "character"]
+    },
+    {
+      "name": "@openstarry-plugin/transport-websocket",
+      "description": "WebSocket transport for real-time agent communication",
+      "version": "0.19.0",
+      "aggregates": ["IListener", "IUI"],
+      "tags": ["transport", "websocket"]
+    },
+    {
+      "name": "@openstarry-plugin/transport-http",
+      "description": "HTTP transport for REST-based agent communication",
+      "version": "0.19.0",
+      "aggregates": ["IListener"],
+      "tags": ["transport", "http"]
+    },
+    {
+      "name": "@openstarry-plugin/mcp-client",
+      "description": "Model Context Protocol client for external tool integration",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["mcp", "client"]
+    },
+    {
+      "name": "@openstarry-plugin/mcp-server",
+      "description": "Model Context Protocol server exposing agent tools",
+      "version": "0.19.0",
+      "aggregates": ["IListener"],
+      "tags": ["mcp", "server"]
+    },
+    {
+      "name": "@openstarry-plugin/mcp-common",
+      "description": "Shared utilities for MCP client and server plugins",
+      "version": "0.19.0",
+      "aggregates": [],
+      "tags": ["mcp", "shared"]
+    },
+    {
+      "name": "@openstarry-plugin/devtools",
+      "description": "DevTools for agent introspection and debugging",
+      "version": "0.19.0",
+      "aggregates": ["ITool", "IUI"],
+      "tags": ["devtools", "debug"]
+    },
+    {
+      "name": "@openstarry-plugin/tui-dashboard",
+      "description": "TUI dashboard for monitoring agents in the terminal",
+      "version": "0.19.0",
+      "aggregates": ["IUI"],
+      "tags": ["tui", "dashboard", "monitoring"]
+    },
+    {
+      "name": "@openstarry-plugin/web-ui",
+      "description": "Web-based UI for browser access to agents",
+      "version": "0.19.0",
+      "aggregates": ["IUI", "IListener"],
+      "tags": ["web", "ui", "browser"]
+    },
+    {
+      "name": "@openstarry-plugin/http-static",
+      "description": "Static HTTP file server for serving web assets",
+      "version": "0.19.0",
+      "aggregates": ["IListener"],
+      "tags": ["http", "static", "files"]
+    },
+    {
+      "name": "@openstarry-plugin/workflow-engine",
+      "description": "Declarative YAML-based multi-step task orchestration",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["workflow", "orchestration", "yaml"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-claude",
+      "description": "Anthropic Claude LLM provider with Messages API",
+      "version": "0.19.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "claude", "anthropic", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-chatgpt",
+      "description": "OpenAI ChatGPT LLM provider with Chat Completions API",
+      "version": "0.19.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "chatgpt", "openai", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-gemini",
+      "description": "Google Gemini LLM provider with API key authentication",
+      "version": "0.19.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "gemini", "google", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-local-llama",
+      "description": "Ollama local LLM provider with auto-detection",
+      "version": "0.19.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "ollama", "local", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/provider-lmstudio",
+      "description": "LM Studio local inference provider (OpenAI-compatible)",
+      "version": "0.22.0",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "lmstudio", "local", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/standard-model-selector",
+      "description": "Provider status aggregation and runtime model selection",
+      "version": "0.19.0",
+      "aggregates": [],
+      "tags": ["standard", "model", "selector"]
+    },
+    {
+      "name": "@openstarry-plugin/standard-core-commands",
+      "description": "Built-in slash commands: help, reset, quit, metrics",
+      "version": "0.19.0",
+      "aggregates": [],
+      "tags": ["standard", "commands", "core"]
+    }
+  ]
+}

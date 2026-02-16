@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/sdk" },
+    { "path": "packages/shared" },
+    { "path": "packages/core" },
+    { "path": "../openstarry_plugin/provider-gemini-oauth" },
+    { "path": "../openstarry_plugin/standard-function-fs" },
+    { "path": "../openstarry_plugin/standard-function-stdio" },
+    { "path": "../openstarry_plugin/guide-character-init" },
+    { "path": "../openstarry_plugin/standard-function-skill" },
+    { "path": "../openstarry_plugin/transport-websocket" },
+    { "path": "../openstarry_plugin/transport-http" },
+    { "path": "apps/runner" }
+  ]
+}
