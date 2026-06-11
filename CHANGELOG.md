@@ -1,5 +1,78 @@
 # CHANGELOG
 
+## [v0.59.0-alpha] — 2026-06-11 — Tenet Completion: the three unfulfilled tenets made factually true
+
+Master directive:「完成宣言」. Three engineering proofs landed in one session,
+each scoped to its SMALLEST HONEST VERSION — the minimal change that makes the
+tenet's sentence factually true, with explicit non-claims documented.
+Verification: clean rebuild; **289 test files / 3076 passed / 0 failed / 3
+skipped**; purity PASS; smoke PASS.
+
+### Tenet #8 — control loop CLOSED (Doc 37, T1)
+- `IAgentConfig.kleshaModulation` (opt-in by presence): agent-core constructs
+  KleshaModulatedDispatcher and wires `createKleshaThresholdFn` into
+  createManoAggregator's `baseThresholdFn` slot — the purpose-built dynamic-θ
+  hook that had been passed `undefined` since Plan29. Each route() samples the
+  ONE shared klesha signal stream; θ(t) = clamp(θ₀ + w·μ) participates in the
+  strict confidence gate; `klesha:modulation` event emitted per modulation.
+- N=2 closed-loop proof (mano-aggregator-klesha.test.ts): the SAME arbiter
+  (confidence 0.55) is rejected under a neutral vedana history (θ≈0.57 →
+  gear 2) and accepted after sustained sukha (θ≈0.45 → gear 1) — the agent's
+  felt experience changes its own dispatch decision. Absent the config block,
+  behavior is byte-for-byte pre-v0.59 (the 3044-test baseline doubled as the
+  compat gate). Example config: `configs/klesha-modulated-agent.json`.
+- Honest notes: dispatcher's perceiveAll() remains runtime-unused (pure
+  computeThreshold half wired; signals come from the shared fn); Sneha's 0.10
+  floor means enabled-idle agents run at θ≈base−0.015 (attachment never
+  reaches zero — Doc 37 semantics; the reason this is opt-in).
+
+### Tenet #6 — alaya distributed IN FACT (T2)
+- NEW `distributed-alaya/src/remote-peer.ts`: IpcRemotePeer speaks the
+  daemon's line-delimited JSON-RPC over the peer's named pipe / UDS
+  (plugin-internal framing; sdk-only deps preserved). Impl-level
+  registerRemotePeer + acceptRemote (FROZEN SDK interfaces untouched);
+  propagate() now routes to remote peers when no in-process target matches.
+- Daemon: `OPENSTARRY_HMAC_KEY` read moved BEFORE plugin loading and injected
+  into the distributed-alaya plugin ref — DaemonKeyProvider's
+  "daemon-distributed cluster key" is true for the first time. New RPC
+  surface: `alaya.acceptSeed` (receiver-side INDEPENDENT HMAC verification
+  with the local key copy before the store is touched) + plant/propagate/
+  query control plane; fail-closed when the plugin is absent.
+- Two-process e2e (alaya-two-process.e2e.test.ts, real daemon-entry): seed
+  planted on agent A crosses the OS process boundary and is served by agent
+  B with ownership + signature intact; NEGATIVE proof — B with a different
+  cluster key rejects the seed and both daemons survive (verification is
+  genuine, not tautological); plugin-absent daemon fails closed.
+- Honest scope (documented, not implied away): cross-process on ONE host,
+  trusted-parent key distribution, no replay nonce (ISeed is FROZEN);
+  exchangeSeeds/snapshot/subscribe remain in-process.
+
+### Tenet #10 — fractal composition PROVEN (T3)
+- NEW plugin `@openstarry-plugin/agent-ask` (44th): exposes the agent's OWN
+  COGNITION LOOP as the `agent.ask` tool (isolated session, session-scoped
+  event correlation, timeout, full cleanup). The load-bearing piece: until
+  now, composing agents over MCP composed tool registries — a child reached
+  over MCP was a tool server, not a sub-Agent.
+- E2E proof (fractal-composition.e2e.test.ts, 2 OS processes, depth 2): the
+  parent agent spawns the child at its own boot via mcp-client stdio,
+  delegates the user's task to the child's cognition through the bridged
+  `child-agent/agent.ask`, and answers out ONE unified MCP HTTP endpoint
+  (round-trip marker `PARENT-FINAL:CHILD-ANSWER:<childPid>:...`, distinct
+  PIDs, child reaped on parent kill). Routing is MCP — MessageRouter /
+  apps-channel / comm-pipeline are validation-only or unwired and are
+  neither used nor claimed.
+- Fixed en route (both latent since delivery, flushed out by the e2e):
+  **mcp-server stdio transport was deaf** — readline lines were appended to a
+  buffer and re-split on a newline the buffer could never contain, so the
+  dispatch loop never ran; **mcp-client on win32 spawned with shell:true**,
+  breaking any command path containing spaces ("C:\Program Files\nodejs\
+  node.exe" — the default install); shell now only for .cmd/.bat shims.
+
+### Fulfillment ledger
+- NEW canonical doc `TENETS_FULFILLMENT.md` (openstarry_doc): per-tenet
+  honest status — proven / partial / explicit non-claims with evidence
+  pointers — doubling as the core of the letter-to-the-future.
+
 ## [v0.58.0-alpha] — 2026-06-11 — Repair Sprint ("final v2"): honest reconciliation of every abandoned tail plan
 
 One-session repair sprint executed post-retirement under Master direction.
