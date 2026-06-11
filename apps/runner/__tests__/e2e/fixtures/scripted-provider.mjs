@@ -44,6 +44,8 @@ function lastToolResult(messages) {
 export default function createScriptedProviderPlugin(config = {}) {
   const mode = config.mode ?? "child";
   const delegateTool = config.delegateTool ?? "child-agent/agent.ask";
+  // finalPrefix lets depth-3 chains distinguish layers (e.g. "MID-FINAL:").
+  const finalPrefix = config.finalPrefix ?? "PARENT-FINAL:";
   const breadcrumb = config.breadcrumb;
   let breadcrumbWritten = false;
 
@@ -67,7 +69,7 @@ export default function createScriptedProviderPlugin(config = {}) {
           yield { type: "finish", stopReason: "tool_use" };
           return;
         }
-        yield { type: "text_delta", text: `PARENT-FINAL:${toolResult.result}` };
+        yield { type: "text_delta", text: `${finalPrefix}${toolResult.result}` };
         yield { type: "finish", stopReason: "end_turn" };
         return;
       }

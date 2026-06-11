@@ -74,8 +74,9 @@ import {
   DEFAULT_EXECUTION_CONFIG,
   DEFAULT_KLESHA_FILTER_CONFIG,
   DEFAULT_KLESHA_MODULATION_CONFIG,
+  DEFAULT_VEDANA_EMERGENCY_CONFIG,
 } from "@openstarry/sdk";
-import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig, KleshaModulationConfig } from "@openstarry/sdk";
+import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig, KleshaModulationConfig, VedanaEmergencyConfig } from "@openstarry/sdk";
 import { createAuditTrailWriter } from "../observability/audit-trail-writer.js";
 
 const logger = createLogger("AgentCore");
@@ -329,8 +330,22 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     ? createKleshaThresholdFn(kleshaDispatcher, kleshaSignalFn, bus)
     : undefined;
 
+  // GAP-2026-06-11 (T1b): VedanaEmergency wiring. createManoAggregator's
+  // param-4 vedanaFn had been passed undefined since Plan28 R1, so the
+  // sustained-dukkha thresholdBoost path (mano-aggregator.ts) was dead at
+  // runtime, and config.vedanaEmergency was a third computed-but-unconsumed
+  // config. The aggregator wants the aggregate ChannelVedana, sampled from
+  // the same factory-scope vedanaFn the klesha stream uses.
+  const resolvedVedanaEmergencyConfig: VedanaEmergencyConfig = Object.freeze({
+    ...DEFAULT_VEDANA_EMERGENCY_CONFIG,
+    ...config.vedanaEmergency,
+  });
+  const manoVedanaFn = (): ReturnType<typeof vedanaFn>["aggregate"] => vedanaFn().aggregate;
+
   // ManoAggregator created after plugin loading to wire auditor; use lazy init
-  let _manoAggregator = createManoAggregator(bus, resolvedManoConfig, kleshaThresholdFn);
+  let _manoAggregator = createManoAggregator(
+    bus, resolvedManoConfig, kleshaThresholdFn, manoVedanaFn, resolvedVedanaEmergencyConfig,
+  );
 
   // VitakkaWatchdog — prevents samsaric stall (Plan27b)
   const watchdog = createVitakkaWatchdog(resolvedVitakkaConfig);
@@ -594,7 +609,9 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
         // TENET-2026-06-11: kleshaThresholdFn (param 3) closes the Doc 37
         // loop — vedana → perceivers → θ(t) → gear decision. undefined when
         // config.kleshaModulation is absent (static threshold, legacy path).
-        bus, resolvedManoConfig, kleshaThresholdFn, undefined, undefined,
+        // GAP-2026-06-11 (T1b): params 4+5 wire the VedanaEmergency
+        // sustained-dukkha thresholdBoost (dead since Plan28 R1).
+        bus, resolvedManoConfig, kleshaThresholdFn, manoVedanaFn, resolvedVedanaEmergencyConfig,
         pluginAuditor ?? undefined,   // null -> undefined; ManoAggregator handles this correctly
         loopQualityFn,
         resolvedConfidenceAuditConfig,

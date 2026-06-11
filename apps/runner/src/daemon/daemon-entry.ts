@@ -213,6 +213,30 @@ async function main(): Promise<void> {
     await core.start();
     console.error(`[daemon] Agent core started`);
 
+    // 9.5 GAP-2026-06-11 (T3b): self-register the ROOT agent. Until this
+    // change the root was never inserted into agentRegistry, so on a real
+    // daemon `agent.processTree` returned [] and `agent.childAgents` always
+    // came back empty (parent entry undefined at spawn bookkeeping) — the
+    // process tree was hollow in the live path.
+    agentRegistry.set(agentId, {
+      agentId,
+      pid: process.pid,
+      status: 'running',
+      configPath,
+      socketPath,
+      logFile,
+      uptime: 0,
+      childAgentIds: [],
+    });
+    agentStatuses.set(agentId, 'running');
+    pidToAgentMap.set(process.pid, agentId);
+    messageRouter.registerAgent(agentId, {
+      canSendTo: config.communication?.canSendTo ?? [],
+      canReceiveFrom: config.communication?.canReceiveFrom ?? [],
+      exposedTools: config.communication?.exposedTools ?? [],
+    });
+    console.error(`[daemon] Root agent registered in process tree`);
+
     // 10. Initialize event forwarder (bridge core.bus to IPC)
     eventForwarderUnsub = initEventForwarder(core.bus, ipcServer, agentId);
     console.error(`[daemon] Event forwarder initialized`);
@@ -933,6 +957,31 @@ async function shutdown(signal: string): Promise<void> {
       await ctx.persistence.save(ctx.agentId, session, messages);
     }
     console.error("[daemon] All sessions saved");
+
+    // GAP-2026-06-11 (T3b): cascade shutdown to spawned child daemons —
+    // the first-ever reap path. Children are DETACHED processes; before this
+    // change, parent shutdown left them running as permanent orphans
+    // (gracefulStopAgent had zero call sites and, despite its doc comment,
+    // never signalled the child PID). Each child gets SIGTERM — its own
+    // daemon runs its own graceful shutdown — plus immediate bookkeeping
+    // deregistration. No per-child grace wait here: the parent is dying and
+    // shutdownWithTimeout caps the whole cascade at 30s.
+    for (const entry of agentRegistry.values()) {
+      if (!entry.parentAgentId || entry.status === 'terminated') continue;
+      try {
+        process.kill(entry.pid, 'SIGTERM');
+        console.error(`[daemon] SIGTERM sent to child agent ${entry.agentId} (pid: ${entry.pid})`);
+      } catch {
+        // already gone
+      }
+      entry.status = 'terminated';
+      agentStatuses.set(entry.agentId, 'terminated');
+      eventBridge.deregisterAgent(entry.agentId);
+      globalServiceRegistry.deregisterAgent(entry.agentId);
+      messageRouter.deregisterAgent(entry.agentId);
+      agentGracePeriods.delete(entry.agentId);
+      removePidIdentity(entry.pid, pidToAgentMap);
+    }
 
     // Unsubscribe event forwarder
     if (eventForwarderUnsub) {

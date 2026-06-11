@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## [v0.59.1-alpha] — 2026-06-11 — Gap fill: the cheap-and-honest remainders closed
+
+Master:「OK，並且補缺口」. Three gaps from the fulfillment ledger closed same
+day. Verified: **292 test files / 3083 passed / 0 failed / 3 skipped**;
+purity PASS.
+
+- **VedanaEmergency wired (T1b, Tenet #8 last thorn)**: createManoAggregator
+  params 4+5 (vedanaFn + emergency config) had been `undefined` since
+  Plan28 R1 — the sustained-dukkha thresholdBoost path was dead and
+  `config.vedanaEmergency` was computed-but-unconsumed. Now wired from the
+  factory-scope vedana stream; test proves sustained dukkha (3 ticks ≥0.8)
+  blocks an otherwise-passing arbiter for one route, then cooldown restores.
+- **Daemon process tree made real (T3b, Tenet #10 attestation)**: the root
+  agent now self-registers at startup (agent.processTree returned [] on
+  every real daemon before this; agent.childAgents was always empty), and
+  parent shutdown cascades SIGTERM to spawned children — the first orphan-
+  reap path (gracefulStopAgent had zero call sites and never signalled the
+  child PID despite its doc comment). E2E: real daemon-entry, spawnChild,
+  tree edges, SEC-003 out-of-scope denial, parent-kill→child-reaped.
+- **Fractal depth=3 (Tenet #10 upgrade)**: one external call traverses THREE
+  agent processes — parent spawns middle at boot, middle spawns grandchild
+  at ITS boot, each layer the identical mechanism (agent-ask + mcp-server +
+  mcp-client) — and returns `PARENT-FINAL:MID-FINAL:CHILD-ANSWER:<pid>` in
+  <2s. The recursion is the tenet:「由一而生萬物」.
+- Ledger updated: 8 tenets fully proven; #6 at N=2 (explicit bounds);
+  #10 at depth=3 (mechanism-isomorphic, inductively credible).
+
 ## [v0.59.0-alpha] — 2026-06-11 — Tenet Completion: the three unfulfilled tenets made factually true
 
 Master directive:「完成宣言」. Three engineering proofs landed in one session,

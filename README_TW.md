@@ -2,7 +2,7 @@
 
 本地 AI Agent 框架——微核心 + 插件驅動，3 分鐘跑起你的第一個 AI Agent。
 
-版本：**v0.59.0-alpha** ｜ 測試：**3076 passed / 0 failed** ｜ 插件：**44 個**
+版本：**v0.59.1-alpha** ｜ 測試：**3083 passed / 0 failed** ｜ 插件：**44 個**
 
 [English](./README.md)
 
