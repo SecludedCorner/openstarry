@@ -1,5 +1,14 @@
 # hmac-cleanup (Plan48 E-5 MUST elevation)
 
+> **[2026-06-11 repair audit] HONEST STATUS: LIBRARY ONLY — NOT WIRED.**
+> This module is tested but is not imported from any production path. Wiring
+> the capture-and-zero key flow requires refactoring the checkpoint HMAC path
+> (`utils/snapshot-hmac.ts` reads the key via start.ts `resolveHmacKey`), which
+> was judged out of scope for the v0.58.0-alpha repair sprint. Unlike the
+> amputated Plan51/54/56 orphans, this library neither duplicates nor conflicts
+> with a live subsystem, and its compliance design (ASVS V2.10.1 / NIST
+> SP 800-57 §8.2.2) remains directly integrable — retained as explicit future work.
+
 Implements C48-M3 — HMAC key closure pattern with env-var zeroing and
 shutdown-flush ordering. Scope qualifier: **within-process scope** per
 R3 D-12(b). See `docs/EN/hmac-compliance.md` for the ASVS/NIST mapping.
