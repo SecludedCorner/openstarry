@@ -64,7 +64,7 @@ import { createSignatureVerifier } from "../sandbox/signature-verification.js";
 import { createGearArbiterRegistry } from "../mano/index.js";
 import { createManoAggregator } from "../mano/index.js";
 import { createVitakkaWatchdog } from "../vijnana/vitakka-watchdog.js";
-import { createDefaultKleshas } from "../vijnana/klesha.js";
+import { createDefaultKleshas, KleshaModulatedDispatcher } from "../vijnana/klesha.js";
 import type { IKlesha, KleshaContext } from "@openstarry/sdk";
 import {
   DEFAULT_VITAKKA_WATCHDOG_CONFIG,
@@ -73,8 +73,9 @@ import {
   DEFAULT_CONFIDENCE_AUDIT_CONFIG,
   DEFAULT_EXECUTION_CONFIG,
   DEFAULT_KLESHA_FILTER_CONFIG,
+  DEFAULT_KLESHA_MODULATION_CONFIG,
 } from "@openstarry/sdk";
-import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig } from "@openstarry/sdk";
+import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig, KleshaModulationConfig } from "@openstarry/sdk";
 import { createAuditTrailWriter } from "../observability/audit-trail-writer.js";
 
 const logger = createLogger("AgentCore");
@@ -155,6 +156,42 @@ export function createKleshaSignalFn(
       }
     }
     return bundle;
+  };
+}
+
+/**
+ * Build the θ(t) gain-scheduled base-threshold getter for gear arbitration
+ * (TENET-2026-06-11 — Doc 37 closure; completes the Tenet #8 control loop).
+ *
+ * Plugs into createManoAggregator's `baseThresholdFn` slot (the purpose-built
+ * dynamic-θ hook that had been passed `undefined` since Plan29). Each route()
+ * call samples the SHARED kleshaSignalFn (one perceiver set, one vedana ring
+ * buffer — never duplicate that state) and maps the bundle through
+ * KleshaModulatedDispatcher.computeThreshold:
+ *   θ(t) = clamp(θ₀ + w_sneha·μ_sneha + w_mana·μ_mana, θ_min, θ_max)
+ *
+ * NOTE: the dispatcher's perceiveAll() is deliberately NOT called here — it
+ * would re-step the stateful filters (Moha EMA, Sneha integral); only the
+ * pure computeThreshold half is exercised. Emits 'klesha:modulation' with the
+ * bundle + resulting θ for observability.
+ *
+ * Exported (like createVedanaFn / createKleshaSignalFn above) for direct
+ * unit-testing of the wiring.
+ */
+export function createKleshaThresholdFn(
+  dispatcher: KleshaModulatedDispatcher,
+  kleshaSignalFn: (sessionId?: string) => KleshaSignalBundle,
+  bus?: EventBus,
+): () => number {
+  return (): number => {
+    const bundle = kleshaSignalFn();
+    const threshold = dispatcher.computeThreshold(bundle);
+    bus?.emit({
+      type: 'klesha:modulation',
+      timestamp: Date.now(),
+      payload: { ...bundle, threshold },
+    });
+    return threshold;
   };
 }
 
@@ -260,8 +297,40 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     if (kleshaActionHistory.length > KLESHA_ACTION_HISTORY_CAP) kleshaActionHistory.shift();
   });
 
+  // TENET-2026-06-11: ONE shared klesha signal source at factory scope.
+  // Previously created inside start() under the volition branch only — a
+  // second consumer (the threshold fn below) would have duplicated the
+  // perceiver/vedana-history state. Both volition deliberation and gear
+  // arbitration now read the same stream. Note the consequence: with both
+  // consumers active the stateful filters advance at the combined call rate
+  // (one consistent stream, different effective time-constants) — by design;
+  // do NOT split into two perceiver sets.
+  const vedanaFn = createVedanaFn(vedanaRegistry);
+  const kleshaSignalFn = createKleshaSignalFn(kleshaPerceivers, vedanaFn, kleshaActionHistory);
+
+  // TENET-2026-06-11 (Doc 37 closure): opt-in θ(t) modulation. Presence of
+  // config.kleshaModulation (even {}) enables the dispatcher; absent keeps
+  // the static mano baseThreshold — pre-v0.59 behavior byte-for-byte.
+  // Unset bounds inherit the RESOLVED mano values (single source of truth);
+  // explicit overrides win; weights default to the SDK constants (MR-6:
+  // zero policy constants live in core).
+  const resolvedKleshaModulationConfig: KleshaModulationConfig | null = config.kleshaModulation
+    ? Object.freeze({
+        baseThreshold: config.kleshaModulation.baseThreshold ?? resolvedManoConfig.baseThreshold,
+        minThreshold: config.kleshaModulation.minThreshold ?? resolvedManoConfig.thresholdFloor,
+        maxThreshold: config.kleshaModulation.maxThreshold ?? resolvedManoConfig.thresholdCeiling,
+        weights: { ...DEFAULT_KLESHA_MODULATION_CONFIG.weights, ...config.kleshaModulation.weights },
+      })
+    : null;
+  const kleshaDispatcher = resolvedKleshaModulationConfig
+    ? new KleshaModulatedDispatcher([...kleshaPerceivers], resolvedKleshaModulationConfig)
+    : null;
+  const kleshaThresholdFn = kleshaDispatcher
+    ? createKleshaThresholdFn(kleshaDispatcher, kleshaSignalFn, bus)
+    : undefined;
+
   // ManoAggregator created after plugin loading to wire auditor; use lazy init
-  let _manoAggregator = createManoAggregator(bus, resolvedManoConfig);
+  let _manoAggregator = createManoAggregator(bus, resolvedManoConfig, kleshaThresholdFn);
 
   // VitakkaWatchdog — prevents samsaric stall (Plan27b)
   const watchdog = createVitakkaWatchdog(resolvedVitakkaConfig);
@@ -522,7 +591,10 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
       // Plan32 Wave 1: No auto-mount — pluginAuditor may be undefined (delta=0)
       const pluginAuditor = pluginLoader.getAuditor();
       _manoAggregator = createManoAggregator(
-        bus, resolvedManoConfig, undefined, undefined, undefined,
+        // TENET-2026-06-11: kleshaThresholdFn (param 3) closes the Doc 37
+        // loop — vedana → perceivers → θ(t) → gear decision. undefined when
+        // config.kleshaModulation is absent (static threshold, legacy path).
+        bus, resolvedManoConfig, kleshaThresholdFn, undefined, undefined,
         pluginAuditor ?? undefined,   // null -> undefined; ManoAggregator handles this correctly
         loopQualityFn,
         resolvedConfidenceAuditConfig,
@@ -550,12 +622,12 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
 
       // Plan28: Wire plugin-provided IVolition (if any) with klesha/vedana getters
       const pluginVolition = pluginLoader.getVolition();
-      const vedanaFn = createVedanaFn(vedanaRegistry);
       const volitionDeps = pluginVolition ? {
         deliberatePlan: pluginVolition.deliberatePlan.bind(pluginVolition),
         deliberateAction: pluginVolition.deliberateAction.bind(pluginVolition),
-        // FIX-2026-06-11: live perceiver wiring (was hardcoded neutral zeros).
-        getKleshaSignals: createKleshaSignalFn(kleshaPerceivers, vedanaFn, kleshaActionHistory),
+        // TENET-2026-06-11: reuses the ONE factory-scope kleshaSignalFn —
+        // same perceiver set and vedana history as gear-threshold modulation.
+        getKleshaSignals: kleshaSignalFn,
         getVedanaAssessment: vedanaFn,
       } : undefined;
 
