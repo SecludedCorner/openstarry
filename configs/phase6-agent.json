@@ -1,0 +1,33 @@
+{
+  "identity": {
+    "id": "phase6-agent",
+    "name": "Phase 6 Demo Agent",
+    "description": "Demonstrates loading the Phase 6 plugin-form deliveries (vasana-engine, mesh, api-runtime) — added 2026-06-11 repair sprint so these plugins have a provable activation path",
+    "version": "0.1.0"
+  },
+  "cognition": {
+    "provider": "claude-cli",
+    "model": "haiku",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "maxToolRounds": 5
+  },
+  "capabilities": {
+    "tools": ["fs.read", "fs.list"],
+    "allowedPaths": ["."]
+  },
+  "memory": {
+    "slidingWindowSize": 5
+  },
+  "plugins": [
+    { "name": "@openstarry-plugin/context-sliding-window" },
+    { "name": "@openstarry-plugin/standard-function-stdio" },
+    { "name": "@openstarry-plugin/standard-function-fs" },
+    { "name": "@openstarry-plugin/provider-claude-cli" },
+    { "name": "@openstarry-plugin/guide-character-init" },
+    { "name": "@openstarry-plugin/vasana-engine" },
+    { "name": "@openstarry-plugin/mesh" },
+    { "name": "@openstarry-plugin/api-runtime" }
+  ],
+  "guide": "default-guide"
+}
