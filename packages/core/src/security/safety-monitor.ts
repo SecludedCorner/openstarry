@@ -1,5 +1,6 @@
 /**
- * SafetyMonitor — multi-level circuit breaker system.
+ * SafetyMonitor — safety guardrails for the execution loop.
+ * @skandha vedana (受蘊 — 三受反饋·苦樂捨 placeholder, full implementation in Plan26)
  *
  * Level 1: Resource limits (token budget, loop cap)
  * Level 2: Behavioral analysis (repetitive tool calls, error cascade)
@@ -10,6 +11,8 @@
 
 import { createHash } from "node:crypto";
 import { createLogger } from "@openstarry/shared";
+import type { RouteResult } from "@openstarry/sdk";
+import { DEFAULT_POST_ROUTE_MAX_TOKEN_BUDGET, DEFAULT_POST_ROUTE_CONFIDENCE_FLOOR } from "@openstarry/sdk";
 
 const logger = createLogger("SafetyMonitor");
 
@@ -19,20 +22,7 @@ export interface SafetyCheckResult {
   injectPrompt?: string;
 }
 
-export interface SafetyMonitorConfig {
-  /** Max loop ticks per task (default: 50) */
-  maxLoopTicks: number;
-  /** Max total token usage (default: 100000, 0 = unlimited) */
-  maxTokenUsage: number;
-  /** Consecutive identical failed tool calls to trigger breaker (default: 3) */
-  repetitiveFailThreshold: number;
-  /** Consecutive failures before forcing "ask user for help" (default: 5) */
-  frustrationThreshold: number;
-  /** Error rate window size (default: 10) */
-  errorWindowSize: number;
-  /** Error rate threshold to trigger cascade breaker (default: 0.8) */
-  errorRateThreshold: number;
-}
+import type { SafetyMonitorConfig } from "@openstarry/sdk";
 
 export interface SafetyMonitor {
   /** Called when a new input event starts processing. Resets per-task counters. */
@@ -51,21 +41,26 @@ export interface SafetyMonitor {
   trackTokenUsage(tokens: number): void;
   /** Reset all counters (e.g., on /reset). */
   reset(): void;
+  /**
+   * Post-route safety check on RouteResult (Plan28).
+   * v1: passthrough. Plugins can wrap/replace for policy enforcement.
+   * Named postRouteCheck (not postCheck) to avoid Doc 44 postLLMCheck conflict.
+   */
+  postRouteCheck(routeResult: RouteResult): RouteResult;
 }
 
-const DEFAULT_CONFIG: SafetyMonitorConfig = {
-  maxLoopTicks: 50,
-  maxTokenUsage: 100000,
-  repetitiveFailThreshold: 3,
-  frustrationThreshold: 5,
-  errorWindowSize: 10,
-  errorRateThreshold: 0.8,
-};
+/** Post-route check policy options (Plan33 D-31-1). */
+export interface PostRouteCheckOptions {
+  maxTokenBudget?: number;
+  confidenceFloor?: number;
+}
 
 export function createSafetyMonitor(
-  overrides?: Partial<SafetyMonitorConfig>,
+  config: SafetyMonitorConfig,
+  postRouteOptions?: PostRouteCheckOptions,
 ): SafetyMonitor {
-  const config = { ...DEFAULT_CONFIG, ...overrides };
+  const maxTokenBudget = postRouteOptions?.maxTokenBudget ?? DEFAULT_POST_ROUTE_MAX_TOKEN_BUDGET;
+  const confidenceFloor = postRouteOptions?.confidenceFloor ?? DEFAULT_POST_ROUTE_CONFIDENCE_FLOOR;
 
   let tickCount = 0;
   let totalTokensUsed = 0;
@@ -82,7 +77,7 @@ export function createSafetyMonitor(
     return createHash("sha256")
       .update(`${toolName}:${argsJson}`)
       .digest("hex")
-      .slice(0, 16);
+      .slice(0, config.fingerprintLength);
   }
 
   return {
@@ -189,6 +184,33 @@ export function createSafetyMonitor(
       consecutiveFailures = 0;
       recentFingerprints.length = 0;
       errorWindow.length = 0;
+    },
+
+    postRouteCheck(routeResult: RouteResult): RouteResult {
+      // v2: lightweight post-route safety checks (Plan33 D-31-1)
+      // Non-blocking — checks add flags but never reject (Tenet #7: rejection is policy, belongs in plugins).
+      let flags: Record<string, boolean> | undefined = routeResult.flags ? { ...routeResult.flags } : undefined;
+
+      // Check 1: Empty response guard (structural mechanism, no policy value)
+      if (!routeResult.decidedBy || routeResult.decidedBy.trim() === '') {
+        // decidedBy empty means no arbiter made a decision — structural issue
+      }
+
+      // Check 2: Token budget (policy value from SDK DEFAULT_POST_ROUTE_MAX_TOKEN_BUDGET)
+      if (Number.isFinite(maxTokenBudget) && totalTokensUsed > maxTokenBudget) {
+        logger.warn(`postRouteCheck: token budget exceeded (${totalTokensUsed}/${maxTokenBudget})`);
+        flags = { ...flags, tokenBudgetExceeded: true };
+      }
+
+      // Check 3: Confidence floor (policy value from SDK DEFAULT_POST_ROUTE_CONFIDENCE_FLOOR)
+      if (confidenceFloor > 0 && routeResult.confidence < confidenceFloor) {
+        flags = { ...flags, lowConfidence: true };
+      }
+
+      if (flags && Object.keys(flags).length > 0) {
+        return { ...routeResult, flags };
+      }
+      return routeResult;
     },
   };
 }

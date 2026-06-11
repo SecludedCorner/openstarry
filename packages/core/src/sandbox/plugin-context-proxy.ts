@@ -28,6 +28,7 @@ import type {
   SessionResponseMessage,
 } from "./messages.js";
 import type { IStateManager } from "@openstarry/sdk";
+import { DEFAULT_SANDBOX_MANAGER_CONFIG } from "@openstarry/sdk";
 
 let rpcIdCounter = 0;
 
@@ -43,7 +44,7 @@ function rpcRequest(
   type: string,
   payload: Record<string, unknown>,
   replyType: string,
-  timeoutMs = 30000,
+  timeoutMs = DEFAULT_SANDBOX_MANAGER_CONFIG.rpcTimeoutMs,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = nextRpcId();

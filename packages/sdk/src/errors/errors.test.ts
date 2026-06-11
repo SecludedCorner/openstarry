@@ -6,6 +6,8 @@ import {
   ConfigError,
   ToolExecutionError,
   PluginLoadError,
+  ServiceRegistrationError,
+  ServiceDependencyError,
 } from "./base.js";
 import { ErrorCode } from "./codes.js";
 
@@ -114,6 +116,53 @@ describe("Error System", () => {
       expect(ErrorCode.SESSION_INVALID_OPERATION).toBe("SESSION_INVALID_OPERATION");
       expect(ErrorCode.CONFIG_ERROR).toBe("CONFIG_ERROR");
       expect(ErrorCode.CONFIG_VALIDATION_ERROR).toBe("CONFIG_VALIDATION_ERROR");
+      expect(ErrorCode.SERVICE_REGISTRATION_ERROR).toBe("SERVICE_REGISTRATION_ERROR");
+      expect(ErrorCode.SERVICE_DEPENDENCY_ERROR).toBe("SERVICE_DEPENDENCY_ERROR");
+    });
+  });
+
+  describe("ServiceRegistrationError", () => {
+    it("should be instanceof AgentError", () => {
+      const err = new ServiceRegistrationError("my-service", "already registered");
+      expect(err).toBeInstanceOf(AgentError);
+      expect(err).toBeInstanceOf(Error);
+    });
+
+    it("should have correct name, code, and serviceName", () => {
+      const err = new ServiceRegistrationError("my-service", "already registered");
+      expect(err.name).toBe("ServiceRegistrationError");
+      expect(err.code).toBe("SERVICE_REGISTRATION_ERROR");
+      expect(err.serviceName).toBe("my-service");
+      expect(err.message).toBe("already registered");
+    });
+
+    it("should preserve cause", () => {
+      const rootCause = new Error("underlying error");
+      const err = new ServiceRegistrationError("svc", "failed", rootCause);
+      expect(err.cause).toBe(rootCause);
+    });
+  });
+
+  describe("ServiceDependencyError", () => {
+    it("should be instanceof AgentError", () => {
+      const err = new ServiceDependencyError("my-plugin", ["svc-a", "svc-b"]);
+      expect(err).toBeInstanceOf(AgentError);
+      expect(err).toBeInstanceOf(Error);
+    });
+
+    it("should have correct name, code, and properties", () => {
+      const err = new ServiceDependencyError("my-plugin", ["svc-a", "svc-b"]);
+      expect(err.name).toBe("ServiceDependencyError");
+      expect(err.code).toBe("SERVICE_DEPENDENCY_ERROR");
+      expect(err.pluginName).toBe("my-plugin");
+      expect(err.missingServices).toEqual(["svc-a", "svc-b"]);
+      expect(err.message).toBe('Plugin "my-plugin" requires missing services: svc-a, svc-b');
+    });
+
+    it("should preserve cause", () => {
+      const rootCause = new Error("dep check failed");
+      const err = new ServiceDependencyError("p", ["x"], rootCause);
+      expect(err.cause).toBe(rootCause);
     });
   });
 

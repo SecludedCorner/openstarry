@@ -1,6 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createSecurityLayer } from "./guardrails.js";
 import type { SessionConfig } from "@openstarry/sdk";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 describe("SecurityLayer", () => {
   it("allows paths within the allowed scope", () => {
@@ -42,6 +45,35 @@ describe("SecurityLayer", () => {
     // Mutating returned array should not affect internals
     paths.push("/evil");
     expect(security.getAllowedPaths()).toHaveLength(2);
+  });
+
+  describe("Symlink bypass prevention", () => {
+    let tempDir: string;
+
+    afterEach(() => {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it("blocks symlinks pointing outside allowed scope", () => {
+      tempDir = mkdtempSync(join(tmpdir(), "sec-symlink-"));
+      const allowed = join(tempDir, "allowed");
+      const outside = join(tempDir, "outside");
+      mkdirSync(allowed);
+      mkdirSync(outside);
+
+      // Create a symlink inside allowed/ that points to outside/
+      const link = join(allowed, "escape");
+      symlinkSync(outside, link, "junction");
+
+      const security = createSecurityLayer([allowed]);
+
+      // Direct access to outside/ should be blocked
+      expect(() => security.validatePath(outside)).toThrow();
+
+      // Access via symlink should also be blocked (resolves to outside/)
+      expect(() => security.validatePath(link)).toThrow();
+      expect(() => security.validatePath(join(link, "secret.txt"))).toThrow();
+    });
   });
 
   describe("Session Config Validation", () => {

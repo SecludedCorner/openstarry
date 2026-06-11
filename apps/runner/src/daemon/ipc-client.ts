@@ -92,7 +92,7 @@ export class IPCClientImpl implements IPCClient {
     this.eventHandlers.get(event)!.push(handler);
   }
 
-  private handleData(data: Buffer): void {
+  private handleData(data: string | Buffer): void {
     this.buffer += data.toString("utf-8");
 
     // Process complete messages (newline-delimited)

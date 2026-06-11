@@ -28,6 +28,9 @@ import { PluginUninstallCommand } from "./commands/plugin-uninstall.js";
 import { PluginListCommand } from "./commands/plugin-list.js";
 import { PluginSearchCommand } from "./commands/plugin-search.js";
 import { PluginInfoCommand } from "./commands/plugin-info.js";
+import { ConfigValidateCommand } from "./commands/config-validate.js";
+import { ConfigMigrateCommand } from "./commands/config-migrate.js";
+import { CheckpointCommand } from "./commands/checkpoint.js";
 
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2));
@@ -53,11 +56,13 @@ async function main(): Promise<number> {
     console.log("  plugin info    Show plugin details");
     console.log("  plugin sync    Sync plugins from a source repository to system directory");
     console.log("  version        Show version information");
+    console.log("  checkpoint     Verify or inspect a runner checkpoint blob (Plan47 K-3)");
     console.log("");
     console.log("Options:");
-    console.log("  --config <path>  Path to agent config file");
-    console.log("  --verbose        Show detailed output");
-    console.log("  --help, -h       Show this help message");
+    console.log("  --config <path>      Path to agent config file");
+    console.log("  --verbose            Show detailed output");
+    console.log("  --no-project-dir     Disable project-level .openstarry/ configuration for this run");
+    console.log("  --help, -h           Show this help message");
     return 0;
   }
 
@@ -78,6 +83,14 @@ async function main(): Promise<number> {
       parsed.positional.shift();
     }
   }
+  // Plan33: config validate / config migrate compound commands
+  if (parsed.command === "config" && parsed.positional.length > 0) {
+    const subcommand = parsed.positional[0];
+    if (subcommand === "validate" || subcommand === "migrate") {
+      commandName = `config-${subcommand}`;
+      parsed.positional.shift();
+    }
+  }
 
   // Subcommand routing
   const commands = [
@@ -95,6 +108,9 @@ async function main(): Promise<number> {
     new PluginListCommand(),
     new PluginSearchCommand(),
     new PluginInfoCommand(),
+    new ConfigValidateCommand(),
+    new ConfigMigrateCommand(),
+    new CheckpointCommand(),
   ];
 
   const command = commands.find(cmd => cmd.name === commandName);

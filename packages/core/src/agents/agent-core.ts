@@ -20,14 +20,17 @@ import type {
   IServiceRegistry,
   PluginManifest,
   ICognitionConfigService,
+  KleshaSignalBundle,
+  VedanaAssessment,
+  ChannelVedana,
 } from "@openstarry/sdk";
-import { AgentEventType, getSessionConfig } from "@openstarry/sdk";
+import { AgentEventType, getSessionConfig, classifyVedana, DEFAULT_VEDANA_CONFIG, SERVICE_KEYS } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 import { createEventBus } from "../bus/index.js";
 import { createEventQueue, type EventQueue } from "../execution/queue.js";
 import { createExecutionLoop, type ExecutionLoop } from "../execution/loop.js";
 import { createSessionManager } from "../session/manager.js";
-import { createContextManager } from "../memory/context.js";
+import type { IContextManager } from "@openstarry/sdk";
 import {
   createToolRegistry,
   createProviderRegistry,
@@ -37,6 +40,9 @@ import {
   createCommandRegistry,
   createServiceRegistry,
   createPluginLoader,
+  createVedanaRegistry,
+  createMonitorRegistry,
+  createCommChannelRegistry,
   type ToolRegistry,
   type ProviderRegistry,
   type ListenerRegistry,
@@ -44,16 +50,68 @@ import {
   type GuideRegistry,
   type CommandRegistry,
   type ServiceRegistry,
+  type VedanaRegistry,
+  type MonitorRegistry,
+  type CommChannelRegistry,
 } from "../infrastructure/index.js";
 import { createSecurityLayer, type SecurityLayer } from "../security/guardrails.js";
 import { createSafetyMonitor, type SafetyMonitor } from "../security/safety-monitor.js";
 import { createTransportBridge } from "../transport/bridge.js";
-import type { IContextManager } from "@openstarry/sdk";
 import { createMetricsCollector } from "../observability/index.js";
 import type { MetricsCollector } from "../observability/index.js";
 import { createPluginSandboxManager, type PluginSandboxManager } from "../sandbox/index.js";
+import { createSignatureVerifier } from "../sandbox/signature-verification.js";
+import { createGearArbiterRegistry } from "../mano/index.js";
+import { createManoAggregator } from "../mano/index.js";
+import { createVitakkaWatchdog } from "../vijnana/vitakka-watchdog.js";
+import {
+  DEFAULT_VITAKKA_WATCHDOG_CONFIG,
+  DEFAULT_MANO_AGGREGATOR_CONFIG,
+  DEFAULT_SAFETY_MONITOR_CONFIG,
+  DEFAULT_CONFIDENCE_AUDIT_CONFIG,
+  DEFAULT_EXECUTION_CONFIG,
+  DEFAULT_KLESHA_FILTER_CONFIG,
+} from "@openstarry/sdk";
+import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig } from "@openstarry/sdk";
+import { createAuditTrailWriter } from "../observability/audit-trail-writer.js";
 
 const logger = createLogger("AgentCore");
+
+export function createVedanaFn(registry: VedanaRegistry): () => VedanaAssessment {
+  const NEUTRAL: ChannelVedana = Object.freeze({
+    valence: 0, intensity: 0, type: 'upekkha' as const, source: 'neutral',
+  });
+  const NEUTRAL_ASSESSMENT: VedanaAssessment = Object.freeze({
+    aggregate: NEUTRAL, channels: [NEUTRAL], pidOutput: 0, timestamp: 0,
+  });
+
+  return (): VedanaAssessment => {
+    const sensors = registry.list();
+    if (sensors.length === 0) {
+      return { ...NEUTRAL_ASSESSMENT, timestamp: Date.now() };
+    }
+    const channels: ChannelVedana[] = [];
+    for (const sensor of sensors) {
+      try {
+        channels.push(sensor.sense(null));
+      } catch (err) {
+        logger.debug('Sensor error', { sensorId: sensor.id, error: err });
+      }
+    }
+    if (channels.length === 0) {
+      return { ...NEUTRAL_ASSESSMENT, timestamp: Date.now() };
+    }
+    const avgValence = channels.reduce((s, c) => s + c.valence, 0) / channels.length;
+    const maxIntensity = Math.max(...channels.map(c => c.intensity));
+    const type = classifyVedana(avgValence, DEFAULT_VEDANA_CONFIG);
+    const aggregate: ChannelVedana = {
+      valence: avgValence, intensity: maxIntensity, type, source: 'aggregate',
+    };
+    return {
+      aggregate, channels, pidOutput: avgValence * maxIntensity, timestamp: Date.now(),
+    };
+  };
+}
 
 export interface AgentCore {
   readonly bus: EventBus;
@@ -70,8 +128,11 @@ export interface AgentCore {
   readonly security: SecurityLayer;
   readonly safetyMonitor: SafetyMonitor;
   readonly metrics: MetricsCollector;
+  readonly commChannelRegistry: CommChannelRegistry;
 
   loadPlugin(plugin: IPlugin): Promise<void>;
+  /** Load multiple plugins with dependency ordering (topological sort). */
+  loadPlugins(plugins: IPlugin[]): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
   /** Push an input event into the queue (preferred way for external input). */
@@ -85,7 +146,8 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
   const bus = createEventBus();
   const queue = createEventQueue();
   const sessionManager = createSessionManager(bus);
-  const contextManager = createContextManager();
+  // Plan32 Wave 6: Context manager resolved from plugin in start() (REQUIRED)
+  let contextManager: IContextManager | null = null;
 
   const toolRegistry = createToolRegistry();
   const providerRegistry = createProviderRegistry();
@@ -94,6 +156,74 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
   const guideRegistry = createGuideRegistry();
   const commandRegistry = createCommandRegistry();
   const serviceRegistry = createServiceRegistry();
+  const vedanaRegistry = createVedanaRegistry();
+  const gearArbiterRegistry = createGearArbiterRegistry();
+  const monitorRegistry = createMonitorRegistry();
+  const commChannelRegistry = createCommChannelRegistry();
+
+  // Plan32 Wave 3: Three-layer config resolution (SDK defaults + user overrides)
+  const resolvedManoConfig: ManoAggregatorConfig = Object.freeze({
+    ...DEFAULT_MANO_AGGREGATOR_CONFIG,
+    ...config.mano,
+  });
+  const resolvedSafetyConfig: SafetyMonitorConfig = Object.freeze({
+    ...DEFAULT_SAFETY_MONITOR_CONFIG,
+    maxLoopTicks: config.policy?.maxConcurrentTools
+      ? config.policy.maxConcurrentTools * 10
+      : DEFAULT_SAFETY_MONITOR_CONFIG.maxLoopTicks,
+    ...config.safety,
+  });
+  const resolvedConfidenceAuditConfig: ConfidenceAuditConfig = Object.freeze({
+    ...DEFAULT_CONFIDENCE_AUDIT_CONFIG,
+    ...config.confidenceAudit,
+  });
+  const resolvedVitakkaConfig: VitakkaWatchdogConfig = Object.freeze({
+    ...DEFAULT_VITAKKA_WATCHDOG_CONFIG,
+    ...config.vitakka,
+  });
+
+  // Plan32 Wave 4 (P1): Execution config resolution
+  const resolvedExecutionConfig: ExecutionConfig = Object.freeze({
+    ...DEFAULT_EXECUTION_CONFIG,
+    // Layer 1 overrides from IAgentConfig (legacy fields + new execution block)
+    ...(config.cognition.maxToolRounds != null ? { maxToolRounds: config.cognition.maxToolRounds } : {}),
+    ...(config.memory?.slidingWindowSize != null ? { slidingWindowSize: config.memory.slidingWindowSize } : {}),
+    ...(config.policy?.toolTimeout != null ? { toolTimeout: config.policy.toolTimeout } : {}),
+    ...(config.policy?.llmTimeout != null ? { llmTimeout: config.policy.llmTimeout } : {}),
+    ...config.execution,
+  });
+
+  // Plan32 Wave 4 (P1): Klesha filter config resolution
+  const resolvedKleshaFilterConfig: KleshaFilterConfig = Object.freeze({
+    moha: { ...DEFAULT_KLESHA_FILTER_CONFIG.moha, ...config.kleshaFilter?.moha },
+    drishti: { ...DEFAULT_KLESHA_FILTER_CONFIG.drishti, ...config.kleshaFilter?.drishti },
+    mana: { ...DEFAULT_KLESHA_FILTER_CONFIG.mana, ...config.kleshaFilter?.mana },
+    sneha: { ...DEFAULT_KLESHA_FILTER_CONFIG.sneha, ...config.kleshaFilter?.sneha },
+  });
+
+  // ManoAggregator created after plugin loading to wire auditor; use lazy init
+  let _manoAggregator = createManoAggregator(bus, resolvedManoConfig);
+
+  // VitakkaWatchdog — prevents samsaric stall (Plan27b)
+  const watchdog = createVitakkaWatchdog(resolvedVitakkaConfig);
+  bus.on('gear:switch', (event) => {
+    const payload = event.payload as { gear?: number } | undefined;
+    if (!payload?.gear) return;
+    const gear = payload.gear;
+    if (gear === resolvedManoConfig.defaultGear) {
+      watchdog.resetOnDefaultGear();
+    } else {
+      const stalled = watchdog.recordGearCycle(gear);
+      if (stalled) {
+        bus.emit({
+          type: 'vitakka:stall',
+          timestamp: Date.now(),
+          payload: { stalledGear: gear },
+        });
+        _manoAggregator.forceNextGear(resolvedManoConfig.defaultGear);
+      }
+    }
+  });
 
   const security = createSecurityLayer(
     config.capabilities.allowedPaths ?? [config.identity.id],
@@ -104,11 +234,9 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     },
   );
 
-  const safetyMonitor = createSafetyMonitor({
-    maxLoopTicks: config.policy?.maxConcurrentTools
-      ? config.policy.maxConcurrentTools * 10
-      : 50,
-    maxTokenUsage: 0, // Unlimited by default for MVP
+  const safetyMonitor = createSafetyMonitor(resolvedSafetyConfig, {
+    maxTokenBudget: config.maxTokenBudget,
+    confidenceFloor: config.confidenceFloor,
   });
 
   const metrics = createMetricsCollector();
@@ -145,12 +273,19 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     uiRegistry,
     guideRegistry,
     commandRegistry,
+    vedanaRegistry,
+    gearArbiterRegistry,
+    monitorRegistry,
+    commChannelRegistry,
     sandboxManager,
+    bus,
+    signatureVerifier: createSignatureVerifier(),
   });
 
   const bridge = createTransportBridge(bus, uiRegistry);
   let bridgeUnsub: (() => void) | null = null;
   let executionLoop: ExecutionLoop | null = null;
+  let _auditTrailStop: (() => Promise<void>) | null = null;
 
   // Reset safety monitor when state is reset (e.g., by /reset command from plugin)
   bus.on(AgentEventType.STATE_RESET, () => safetyMonitor.reset());
@@ -196,7 +331,7 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
   }
 
   function resolveModel(sessionId?: string): string | undefined {
-    const cogSvc = serviceRegistry.get<ICognitionConfigService>("cognition-config");
+    const cogSvc = serviceRegistry.get(SERVICE_KEYS.COGNITION_CONFIG);
     if (cogSvc) {
       const model = cogSvc.getModel(sessionId);
       if (model) return model;
@@ -214,7 +349,7 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     }
 
     // Try runtime provider via cognition service → config provider
-    const cogSvc = serviceRegistry.get<ICognitionConfigService>("cognition-config");
+    const cogSvc = serviceRegistry.get(SERVICE_KEYS.COGNITION_CONFIG);
     const runtimeProv = cogSvc?.getProvider(sessionId);
     const providerId = runtimeProv || config.cognition.provider;
     if (providerId) {
@@ -275,6 +410,7 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     security,
     safetyMonitor,
     metrics,
+    commChannelRegistry,
 
     async loadPlugin(plugin: IPlugin): Promise<void> {
       const pluginRef = config.plugins.find((p) => p.name === plugin.manifest.name);
@@ -287,30 +423,112 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
       });
     },
 
+    async loadPlugins(plugins: IPlugin[]): Promise<void> {
+      await pluginLoader.loadAll(plugins, (plugin) => {
+        const pluginRef = config.plugins.find((p) => p.name === plugin.manifest.name);
+        return getPluginContext(pluginRef?.config, plugin.manifest);
+      });
+      for (const plugin of plugins) {
+        bus.emit({
+          type: AgentEventType.PLUGIN_LOADED,
+          timestamp: Date.now(),
+          payload: { name: plugin.manifest.name },
+        });
+      }
+    },
+
     async start(): Promise<void> {
       logger.info(`Starting agent: ${config.identity.name} (${config.identity.id})`);
 
       // Start transport bridge
       bridgeUnsub = bridge.start();
 
+      // Plan32: Start all plugin-registered monitors
+      monitorRegistry.startAll(bus);
+
+      // Plan30: loopQualityFn callback for Layer 3
+      const loopQualityFn = (): number => {
+        const reports = monitorRegistry.list()
+          .map(m => m.getReport())
+          .filter((r): r is LoopQualityReport => r !== null);
+        if (reports.length === 0) return 0;
+        const stalenessMs = resolvedManoConfig.monitorStalenessMs!;
+        const now = Date.now();
+        const freshReports = reports.filter(r => now - r.timestamp <= stalenessMs);
+        if (freshReports.length === 0) return 0;
+        return freshReports.reduce((sum, r) => sum + r.score, 0) / freshReports.length;
+      };
+
+      // Recreate ManoAggregator with auditor + loopQualityFn (Plan29 + Plan30 + Plan31)
+      // Plan32 Wave 1: No auto-mount — pluginAuditor may be undefined (delta=0)
+      const pluginAuditor = pluginLoader.getAuditor();
+      _manoAggregator = createManoAggregator(
+        bus, resolvedManoConfig, undefined, undefined, undefined,
+        pluginAuditor ?? undefined,   // null -> undefined; ManoAggregator handles this correctly
+        loopQualityFn,
+        resolvedConfidenceAuditConfig,
+      );
+
+      // Plan32 Wave 6: Resolve context manager from plugin (REQUIRED — no fallback)
+      const resolvedCM = pluginLoader.getContextManager();
+      if (!resolvedCM) {
+        throw new Error(
+          "No context manager plugin installed. " +
+          "Install @openstarry-plugin/context-sliding-window or another IContextManager plugin. " +
+          "Context management is required for agent operation."
+        );
+      }
+      contextManager = resolvedCM;
+
+      // Plan31 W3: Initialize audit trail JSONL writer
+      const auditTrailConfig = config.auditTrail ?? { filePath: `./audit-trail-${config.identity.id}.jsonl` };
+      if (auditTrailConfig.enabled !== false) {
+        const auditTrailWriter = createAuditTrailWriter(bus, config.identity.id, auditTrailConfig);
+        auditTrailWriter.start();
+        // Store for cleanup in stop()
+        _auditTrailStop = () => auditTrailWriter.stop();
+      }
+
+      // Plan28: Wire plugin-provided IVolition (if any) with klesha/vedana getters
+      const pluginVolition = pluginLoader.getVolition();
+      const vedanaFn = createVedanaFn(vedanaRegistry);
+      const volitionDeps = pluginVolition ? {
+        deliberatePlan: pluginVolition.deliberatePlan.bind(pluginVolition),
+        deliberateAction: pluginVolition.deliberateAction.bind(pluginVolition),
+        getKleshaSignals: (): KleshaSignalBundle => ({ moha: 0, drishti: 0, mana: 0, sneha: 0 }),
+        getVedanaAssessment: vedanaFn,
+      } : undefined;
+
+      // Plan36b: Wire confirmation gate (if any)
+      const pluginGate = pluginLoader.getConfirmationGate();
+      const confirmationGateDeps = pluginGate ? {
+        evaluate: pluginGate.evaluate.bind(pluginGate),
+      } : undefined;
+
       // Create and start the execution loop
       executionLoop = createExecutionLoop({
         bus,
         queue,
         sessionManager,
-        contextManager,
+        contextManager: contextManager!,  // guaranteed non-null by throw above
         toolRegistry,
         security,
         safetyMonitor,
         providerResolver: (sessionId?: string) => resolveProvider(sessionId),
         guideResolver: resolveGuide,
         modelResolver: (sessionId?: string) => resolveModel(sessionId),
-        maxToolRounds: config.cognition.maxToolRounds ?? 10,
-        slidingWindowSize: config.memory?.slidingWindowSize ?? 5,
+        maxToolRounds: resolvedExecutionConfig.maxToolRounds,
+        slidingWindowSize: resolvedExecutionConfig.slidingWindowSize,
         workingDirectory: process.cwd(),
         temperature: config.cognition.temperature,
         maxTokens: config.cognition.maxTokens,
-        toolTimeout: config.policy?.toolTimeout ?? 30000,
+        toolTimeout: resolvedExecutionConfig.toolTimeout,
+        llmTimeout: resolvedExecutionConfig.llmTimeout,
+        manoAggregator: _manoAggregator,
+        gearArbiterRegistry,
+        monitorRegistry,
+        volition: volitionDeps,
+        confirmationGate: confirmationGateDeps,
       });
       executionLoop.start();
 
@@ -321,7 +539,7 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
       bus.on(AgentEventType.SESSION_CREATED, () => metrics.increment("session.created"));
       bus.on(AgentEventType.SESSION_DESTROYED, () => metrics.increment("session.destroyed"));
 
-      // Start all listeners (受蘊)
+      // Start all listeners (色蘊 — sensory input)
       for (const listener of listenerRegistry.list()) {
         if (listener.start) {
           await listener.start();
@@ -353,7 +571,7 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
         executionLoop = null;
       }
 
-      // Stop listeners (受蘊)
+      // Stop listeners (色蘊 — sensory input)
       for (const listener of listenerRegistry.list()) {
         if (listener.stop) {
           await listener.stop();
@@ -373,6 +591,15 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
         bridgeUnsub = null;
       }
 
+      // Plan32: Stop all monitors
+      monitorRegistry.stopAll();
+
+      // Plan31: Stop audit trail writer
+      if (_auditTrailStop) {
+        await _auditTrailStop();
+        _auditTrailStop = null;
+      }
+
       // Dispose plugins
       await pluginLoader.disposeAll();
 
@@ -387,18 +614,33 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     pushInput(inputEvent: InputEvent): void {
       // Slash commands go through fast path
       if (typeof inputEvent.data === "string" && inputEvent.data.startsWith("/")) {
-        handleSlashCommand(inputEvent.data, inputEvent.sessionId).then((handled) => {
-          if (!handled) {
-            // Not a known command — push to queue for LLM processing
-            queue.push({
-              type: AgentEventType.INPUT_RECEIVED,
+        void (async () => {
+          try {
+            const handled = await handleSlashCommand(inputEvent.data as string, inputEvent.sessionId);
+            if (!handled) {
+              // Not a known command — push to queue for LLM processing
+              queue.push({
+                type: AgentEventType.INPUT_RECEIVED,
+                timestamp: Date.now(),
+                payload: inputEvent,
+              });
+            }
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.error("Slash command error", { error: errMsg });
+            process.exitCode = 1;
+            bus.emit({
+              type: AgentEventType.LOOP_ERROR,
               timestamp: Date.now(),
-              payload: inputEvent,
+              payload: { error: `Slash command error: ${errMsg}`, fatal: true, sessionId: inputEvent.sessionId },
+            });
+            bus.emit({
+              type: AgentEventType.MESSAGE_SYSTEM,
+              timestamp: Date.now(),
+              payload: { text: `Error: ${errMsg}`, sessionId: inputEvent.sessionId },
             });
           }
-        }).catch((err) => {
-          logger.error("Slash command error", { error: String(err) });
-        });
+        })();
         return;
       }
 

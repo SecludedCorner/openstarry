@@ -2,7 +2,7 @@
 
 A local AI Agent framework — microkernel + plugin-driven. Get your first AI Agent running in 3 minutes.
 
-Version: **v0.22.0-beta** | Tests: **1451 tests** | Plugins: **22**
+Version: **v0.42.0-alpha** | Tests: **2375 tests** | Plugins: **39**
 
 [繁體中文](./README_TW.md)
 
@@ -27,7 +27,7 @@ parent_directory/
     ├── provider-*             # LLM Providers (6 providers)
     ├── transport-*            # Transport layer
     ├── web-ui                 # Browser interface
-    └── ...                    # 22 plugins total
+    └── ...                    # 34 plugins total
 ```
 
 > `pnpm-workspace.yaml` includes `../openstarry_plugin/*` in the workspace — install, build, and test all at once.
@@ -214,6 +214,41 @@ node apps/runner/dist/bin.js attach
 node apps/runner/dist/bin.js daemon stop
 ```
 
+### Multi-Agent Coordination (Phase 6)
+
+OpenStarry now supports coordinated multi-agent systems via **ICommChannel** and **Process Tree** architecture. Agents can spawn child agents, route messages across the process tree, and coordinate responses via event federation. The **openstarry-channel** hub enables cross-daemon agent communication with automatic health monitoring and graceful failure handling.
+
+**Example: Parent-Child Agent Communication**
+
+```json
+{
+  "identity": { "id": "coordinator-agent" },
+  "plugins": [
+    { "name": "@openstarry-plugin/provider-gemini" },
+    { "name": "@openstarry-plugin/comm-pipeline" },
+    { "name": "@openstarry-plugin/comm-proxy" },
+    { "name": "@openstarry-plugin/standard-listener-typed" }
+  ],
+  "communication": {
+    "channels": ["pipeline", "mcp"],
+    "gracePeriodMs": 30000
+  }
+}
+```
+
+Key concepts:
+- **ICommChannel**: Bidirectional message passing between agents
+- **CommChannelRegistry**: Discover and list connected agent channels
+- **PipelineChannel** plugin: Route messages through a composition pipeline
+- **comm-proxy** plugin: Fault isolation with circuit breaker and bulkhead isolation
+- **openstarry-channel**: Standalone multi-agent hub managing agent registry and health monitoring
+- **ITypedListener**: Map sensory input types (visual, auditory, tactile, olfactory, gustatory) to message handlers
+- **Process Tree**: Parent-child agent relationships tracked automatically
+- **EventBridge**: Federation of events across multi-agent networks
+- **Graceful Shutdown**: Coordinated termination with configurable grace periods (max 300s)
+
+See [Doc 53: Multi-Agent Communication Interface Spec](../share/openstarry_doc/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md) for detailed protocol documentation.
+
 ## Available Configurations
 
 Preset configurations are in the `configs/` directory:
@@ -277,6 +312,26 @@ Each provider plugin accepts the following `config` fields:
 
 OpenStarry follows the **Five Aggregates** philosophy, mapping all plugin capabilities to five fundamental types:
 
+### Plugin Categories
+
+| Engineering Term | Code Value | Description |
+|-----------------|------------|-------------|
+| **Input/Sensor** | `'rupa'` | Receives external signals — CLI prompts, HTTP requests, WebSocket messages, file watchers |
+| **Feedback/Sensing** | `'vedana'` | Evaluates interaction quality — tool outcome sensing, safety check results, confidence gap detection |
+| **Model/Cognition** | `'samjna'` | Processes information — LLM backends, context management, cognitive processing strategies |
+| **Action/Tool** | `'samskara'` | Executes concrete actions — file operations, shell commands, API calls, code generation |
+| **Control/Governance** | `'vijnana'` | Routes decisions — confidence routing, gear arbitration, threshold auditing, agent persona |
+
+### Plugin Criticality Levels
+
+| Level | Behavior on Missing | Example |
+|-------|-------------------|---------|
+| `required` | Agent refuses to start | Context manager, model selector |
+| `optional-degraded` | Agent starts with reduced capability + warning | Loop quality monitor, threshold auditor |
+| `optional-no-effect` | Agent starts normally, feature simply absent | Custom sensors, telemetry exporters |
+
+### Five Aggregates Mapping
+
 | Aggregate | Interface | Role |
 |-----------|-----------|------|
 | Form (色) | `IUI` | User interface rendering |
@@ -292,7 +347,7 @@ The **microkernel** core stays minimal — all features live in plugins. Plugins
 | Document | Description |
 |----------|-------------|
 | [Architecture Overview](./docs/EN/architecture.md) | Five Aggregates philosophy, microkernel design, event-driven flow |
-| [Plugin Overview](./docs/EN/plugins.md) | All 19 plugins categorized and explained |
+| [Plugin Overview](./docs/EN/plugins.md) | All 34 plugins categorized and explained |
 | [Configuration Format](./docs/EN/configuration.md) | agent.json structure, plugin resolution order, environment variables |
 | [Development Guide](./docs/EN/development.md) | Creating new plugins, test commands, building |
 | [CLI Commands](./docs/EN/cli.md) | CLI command reference, slash commands |

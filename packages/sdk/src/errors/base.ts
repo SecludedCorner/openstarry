@@ -119,11 +119,11 @@ export class McpError extends AgentError {
  * - Service name already registered
  * - Invalid service name format
  */
-export class ServiceRegistrationError extends Error {
+export class ServiceRegistrationError extends AgentError {
   public readonly serviceName: string;
 
   constructor(serviceName: string, message: string, cause?: Error) {
-    super(message, { cause });
+    super(message, "SERVICE_REGISTRATION_ERROR", { cause });
     this.name = "ServiceRegistrationError";
     this.serviceName = serviceName;
   }
@@ -133,14 +133,15 @@ export class ServiceRegistrationError extends Error {
  * Error thrown when a required service dependency is missing.
  * Used for validation warnings in PluginLoader.
  */
-export class ServiceDependencyError extends Error {
+export class ServiceDependencyError extends AgentError {
   public readonly pluginName: string;
   public readonly missingServices: string[];
 
   constructor(pluginName: string, missingServices: string[], cause?: Error) {
     super(
       `Plugin "${pluginName}" requires missing services: ${missingServices.join(", ")}`,
-      { cause }
+      "SERVICE_DEPENDENCY_ERROR",
+      { cause },
     );
     this.name = "ServiceDependencyError";
     this.pluginName = pluginName;

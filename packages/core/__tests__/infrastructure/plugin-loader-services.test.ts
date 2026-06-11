@@ -12,6 +12,7 @@ import { createUIRegistry } from "../../src/infrastructure/ui-registry.js";
 import { createGuideRegistry } from "../../src/infrastructure/guide-registry.js";
 import { createCommandRegistry } from "../../src/infrastructure/command-registry.js";
 import type { IPlugin, IPluginContext, IPluginService } from "@openstarry/sdk";
+import { ServiceKey } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("plugin-loader-services-test");
@@ -86,7 +87,7 @@ describe("PluginLoader - Service Registry Integration", () => {
 
     await loader.load(plugin, ctx);
 
-    expect(serviceRegistry.get("test-service")).toBe(testService);
+    expect(serviceRegistry.get(new ServiceKey<IPluginService>("test-service"))).toBe(testService);
   });
 
   it("plugin can retrieve service registered by earlier plugin", async () => {
@@ -103,7 +104,7 @@ describe("PluginLoader - Service Registry Integration", () => {
     const consumerPlugin: IPlugin = {
       manifest: { name: "consumer", version: "1.0.0", serviceDependencies: ["shared"] },
       factory: async (ctx) => {
-        const retrieved = ctx.services?.get("shared");
+        const retrieved = ctx.services?.get(new ServiceKey<IPluginService>("shared"));
         expect(retrieved).toBe(sharedService);
         return {};
       },
@@ -181,7 +182,7 @@ describe("PluginLoader - Service Registry Integration", () => {
 
     await loader.load(plugin, ctx);
 
-    expect(serviceRegistry.get("undeclared")).toBe(undeclaredService);
+    expect(serviceRegistry.get(new ServiceKey<IPluginService>("undeclared"))).toBe(undeclaredService);
   });
 
   it("ctx.services is undefined if no ServiceRegistry provided (graceful degradation)", async () => {
@@ -215,8 +216,8 @@ describe("PluginLoader - Service Registry Integration", () => {
         serviceDependencies: ["service-1", "service-2"],
       },
       factory: async (ctx) => {
-        expect(ctx.services?.get("service-1")).toBe(service1);
-        expect(ctx.services?.get("service-2")).toBe(service2);
+        expect(ctx.services?.get(new ServiceKey<IPluginService>("service-1"))).toBe(service1);
+        expect(ctx.services?.get(new ServiceKey<IPluginService>("service-2"))).toBe(service2);
         return {};
       },
     };

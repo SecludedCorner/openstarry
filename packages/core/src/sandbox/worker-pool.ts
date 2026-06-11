@@ -3,6 +3,7 @@
  */
 
 import { Worker } from "node:worker_threads";
+import { DEFAULT_WORKER_POOL_RESET_CONFIG } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("WorkerPool");
@@ -30,7 +31,8 @@ export interface PluginWorkerPool {
   getStats(): { idle: number; busy: number; total: number };
 }
 
-const RESET_TIMEOUT_MS = 5000;
+// Plan32 Wave 4 (P2): Policy constant sourced from SDK defaults
+const RESET_TIMEOUT_MS = DEFAULT_WORKER_POOL_RESET_CONFIG.resetTimeoutMs;
 
 export function createWorkerPool(): PluginWorkerPool {
   let idle: Worker[] = [];

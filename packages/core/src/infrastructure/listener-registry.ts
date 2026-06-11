@@ -1,5 +1,6 @@
 /**
  * ListenerRegistry — manages event listeners.
+ * @skandha rupa (色蘊 — 感官根·輸入)
  */
 
 import type { IListener } from "@openstarry/sdk";

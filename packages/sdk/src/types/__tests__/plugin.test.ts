@@ -5,6 +5,7 @@ describe("IPluginContext type", () => {
   describe("providers accessor", () => {
     it("should have optional providers accessor with list/get methods", () => {
       const mockProvider: IProvider = {
+        skandha: "samjna" as const,
         id: "test-provider",
         name: "Test Provider",
         models: [{ id: "test-model", name: "Test Model" }],

@@ -4,13 +4,15 @@ import type { ExecutionLoopDeps } from "./loop.js";
 import { createSessionManager } from "../session/manager.js";
 import { createEventBus } from "../bus/index.js";
 import { createEventQueue } from "./queue.js";
-import type { AgentEvent, IProvider, ProviderStreamEvent } from "@openstarry/sdk";
+import type { AgentEvent, ChatRequest, IProvider, ProviderStreamEvent } from "@openstarry/sdk";
 import { AgentEventType } from "@openstarry/sdk";
 
 function createMockProvider(text: string): IProvider {
   return {
+    skandha: "samjna" as const,
     id: "mock",
     name: "Mock Provider",
+    models: [],
     async *chat(): AsyncGenerator<ProviderStreamEvent> {
       yield { type: "text_delta", text } as ProviderStreamEvent;
       yield {
@@ -19,7 +21,6 @@ function createMockProvider(text: string): IProvider {
         usage: { totalTokens: 10 },
       } as unknown as ProviderStreamEvent;
     },
-    listModels: async () => [],
   };
 }
 
@@ -59,6 +60,8 @@ function createTestDeps(overrides?: Partial<ExecutionLoopDeps>): ExecutionLoopDe
     maxToolRounds: 5,
     slidingWindowSize: 10,
     workingDirectory: "/test",
+    toolTimeout: 30000,
+    llmTimeout: 120000,
     ...overrides,
   };
 }
@@ -174,5 +177,134 @@ describe("ExecutionLoop session integration", () => {
     const s2UserMsg = sm2.getMessages()[0];
     expect((s1UserMsg.content[0] as any).text).toBe("Message for session 1");
     expect((s2UserMsg.content[0] as any).text).toBe("Message for session 2");
+  });
+});
+
+describe("ExecutionLoop LLM timeout", () => {
+  it("passes AbortSignal to ChatRequest", async () => {
+    let capturedRequest: ChatRequest | undefined;
+
+    const capturingProvider: IProvider = {
+      skandha: "samjna" as const,
+      id: "capture",
+      name: "Capture Provider",
+      models: [],
+      async *chat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
+        capturedRequest = req;
+        yield { type: "text_delta", text: "ok" } as ProviderStreamEvent;
+        yield {
+          type: "finish",
+          stopReason: "end_turn",
+          usage: { totalTokens: 5 },
+        } as unknown as ProviderStreamEvent;
+      },
+    };
+
+    const deps = createTestDeps({
+      providerResolver: () => capturingProvider,
+    });
+    const loop = createExecutionLoop(deps);
+
+    await loop.processEvent({
+      source: "test",
+      inputType: "user_input",
+      data: "hello",
+    });
+
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest!.signal).toBeInstanceOf(AbortSignal);
+    expect(capturedRequest!.signal!.aborted).toBe(false);
+  });
+
+  it("aborts LLM call when timeout expires", async () => {
+    vi.useFakeTimers();
+
+    let capturedSignal: AbortSignal | undefined;
+
+    const slowProvider: IProvider = {
+      skandha: "samjna" as const,
+      id: "slow",
+      name: "Slow Provider",
+      models: [],
+      async *chat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
+        capturedSignal = req.signal;
+        // Simulate a slow provider: wait for a long time
+        await new Promise((_resolve, reject) => {
+          if (req.signal) {
+            req.signal.addEventListener("abort", () => {
+              reject(req.signal!.reason);
+            });
+          }
+        });
+      },
+    };
+
+    const deps = createTestDeps({
+      providerResolver: () => slowProvider,
+      llmTimeout: 5000,
+    });
+    const emitted: AgentEvent[] = [];
+    deps.bus.onAny((e) => emitted.push(e));
+
+    const loop = createExecutionLoop(deps);
+
+    const processPromise = loop.processEvent({
+      source: "test",
+      inputType: "user_input",
+      data: "hello",
+    });
+
+    // Advance time past the timeout
+    await vi.advanceTimersByTimeAsync(6000);
+    await processPromise;
+
+    // The signal should have been aborted
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(true);
+
+    // Should have emitted LOOP_ERROR
+    const loopError = emitted.find((e) => e.type === AgentEventType.LOOP_ERROR);
+    expect(loopError).toBeDefined();
+    const errorPayload = loopError!.payload as Record<string, unknown>;
+    expect(errorPayload.error).toContain("timed out");
+
+    vi.useRealTimers();
+  });
+
+  it("uses 120000ms timeout from resolved config", async () => {
+    let capturedRequest: ChatRequest | undefined;
+
+    const capturingProvider: IProvider = {
+      skandha: "samjna" as const,
+      id: "capture",
+      name: "Capture Provider",
+      models: [],
+      async *chat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
+        capturedRequest = req;
+        yield { type: "text_delta", text: "ok" } as ProviderStreamEvent;
+        yield {
+          type: "finish",
+          stopReason: "end_turn",
+          usage: { totalTokens: 5 },
+        } as unknown as ProviderStreamEvent;
+      },
+    };
+
+    // llmTimeout resolved from SDK default (120000ms)
+    const deps = createTestDeps({
+      providerResolver: () => capturingProvider,
+    });
+    const loop = createExecutionLoop(deps);
+
+    await loop.processEvent({
+      source: "test",
+      inputType: "user_input",
+      data: "hello",
+    });
+
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest!.signal).toBeInstanceOf(AbortSignal);
+    // Signal should NOT be aborted (fast response, 120s timeout)
+    expect(capturedRequest!.signal!.aborted).toBe(false);
   });
 });

@@ -12,3 +12,17 @@ export { AgentEventType } from "./constants/events.js";
 
 export { SecureStore } from "./security/secure-store.js";
 export type { SecureStoreOptions, EncryptedPayload } from "./security/secure-store.js";
+
+export { validateRegexSafety, safeRegexTest, DEFAULT_MAX_INPUT_LEN } from "./utils/safe-regex.js";
+
+export {
+  ProjectConfigSchema,
+  ProjectPermissionsSchema,
+  ProjectPluginsSchema,
+  ProjectPluginRefSchema,
+} from "./utils/project-config-schema.js";
+export type {
+  ValidatedProjectConfig,
+  ValidatedProjectPermissions,
+  ValidatedProjectPlugins,
+} from "./utils/project-config-schema.js";

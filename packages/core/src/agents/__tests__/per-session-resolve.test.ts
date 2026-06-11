@@ -7,11 +7,30 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import type { IProvider, IAgentConfig, ProviderStreamEvent, IPluginContext, ICognitionConfigService } from "@openstarry/sdk";
-import { AgentEventType, getSessionConfig, setSessionConfig } from "@openstarry/sdk";
+import type { IProvider, IAgentConfig, ProviderStreamEvent, IPluginContext, ICognitionConfigService, IPlugin, PluginHooks, IContextManager, Message } from "@openstarry/sdk";
+import { AgentEventType, getSessionConfig, setSessionConfig, SERVICE_KEYS } from "@openstarry/sdk";
 import { createAgentCore } from "../agent-core.js";
 
+function createMockContextManagerPlugin(): IPlugin {
+  return {
+    manifest: {
+      name: "@test/mock-context-manager",
+      version: "0.0.0",
+      skandha: "samjna",
+    },
+    async factory(_ctx: IPluginContext): Promise<PluginHooks> {
+      const contextManager: IContextManager = {
+        assembleContext(messages: Message[], _maxTurns: number): Message[] {
+          return messages;
+        },
+      };
+      return { contextManager };
+    },
+  };
+}
+
 const createMockProvider = (id: string, modelIds: string[]): IProvider => ({
+  skandha: "samjna" as const,
   id,
   name: `Provider ${id}`,
   models: modelIds.map((m) => ({ id: m, name: m })),
@@ -115,6 +134,7 @@ describe("Per-session model/provider resolution", () => {
     const events: Array<{ type: string; payload?: unknown }> = [];
     core.bus.on(AgentEventType.LOOP_AWAITING_LLM, (e) => events.push(e));
 
+    await core.loadPlugin(createMockContextManagerPlugin());
     await core.start();
     core.pushInput({ source: "test", inputType: "user_input", data: "hello" });
 
@@ -135,12 +155,13 @@ describe("Per-session model/provider resolution", () => {
 
     await core.loadPlugin(createCognitionConfigPlugin());
 
-    const cogSvc = core.serviceRegistry.get<ICognitionConfigService>("cognition-config")!;
+    const cogSvc = core.serviceRegistry.get(SERVICE_KEYS.COGNITION_CONFIG)!;
     cogSvc.setModel("runtime-model");
 
     const events: Array<{ type: string; payload?: unknown }> = [];
     core.bus.on(AgentEventType.LOOP_AWAITING_LLM, (e) => events.push(e));
 
+    await core.loadPlugin(createMockContextManagerPlugin());
     await core.start();
     core.pushInput({ source: "test", inputType: "user_input", data: "hello" });
 
@@ -161,7 +182,7 @@ describe("Per-session model/provider resolution", () => {
 
     await core.loadPlugin(createCognitionConfigPlugin());
 
-    const cogSvc = core.serviceRegistry.get<ICognitionConfigService>("cognition-config")!;
+    const cogSvc = core.serviceRegistry.get(SERVICE_KEYS.COGNITION_CONFIG)!;
     cogSvc.setModel("global-model");
 
     const session = core.sessionManager.create();
@@ -175,6 +196,7 @@ describe("Per-session model/provider resolution", () => {
     const events: Array<{ type: string; payload?: unknown }> = [];
     core.bus.on(AgentEventType.LOOP_AWAITING_LLM, (e) => events.push(e));
 
+    await core.loadPlugin(createMockContextManagerPlugin());
     await core.start();
     core.pushInput({ source: "test", inputType: "user_input", data: "hello", sessionId: session.id });
 
@@ -195,7 +217,7 @@ describe("Per-session model/provider resolution", () => {
 
     await core.loadPlugin(createCognitionConfigPlugin());
 
-    const cogSvc = core.serviceRegistry.get<ICognitionConfigService>("cognition-config")!;
+    const cogSvc = core.serviceRegistry.get(SERVICE_KEYS.COGNITION_CONFIG)!;
 
     const s1 = core.sessionManager.create();
     const s2 = core.sessionManager.create();
@@ -207,6 +229,7 @@ describe("Per-session model/provider resolution", () => {
       models.push((e.payload as Record<string, unknown>).model as string);
     });
 
+    await core.loadPlugin(createMockContextManagerPlugin());
     await core.start();
 
     core.pushInput({ source: "test", inputType: "user_input", data: "msg1", sessionId: s1.id });

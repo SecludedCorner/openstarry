@@ -24,6 +24,9 @@
     "slidingWindowSize": 5
   },
   "plugins": [
+    { "name": "@openstarry-plugin/context-sliding-window" },
+    { "name": "@openstarry-plugin/monitor-loop-quality" },
+    { "name": "@openstarry-plugin/auditor-passthrough" },
     { "name": "@openstarry-plugin/provider-lmstudio", "config": { "baseUrl": "http://127.0.0.1:1234/v1", "autoConnect": true } },
     { "name": "@openstarry-plugin/provider-gemini-oauth" },
     { "name": "@openstarry-plugin/standard-model-selector" },

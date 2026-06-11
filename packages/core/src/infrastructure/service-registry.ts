@@ -1,9 +1,13 @@
 /**
  * Service registry implementation for cross-plugin service injection.
+ *
+ * Plan41 W1: Typed ServiceKey<T> migration (D4-Q3).
+ * All get/has/unregister now accept ServiceKey<T> for compile-time type safety.
+ * The unsafe `as T | undefined` cast is eliminated (AC-TSR-5).
  */
 
 import type { IPluginService, IServiceRegistry } from "@openstarry/sdk";
-import { ServiceRegistrationError } from "@openstarry/sdk";
+import { ServiceKey, ServiceRegistrationError } from "@openstarry/sdk";
 
 /**
  * In-memory service registry implementation.
@@ -37,23 +41,18 @@ export class ServiceRegistry implements IServiceRegistry {
   }
 
   /**
-   * Retrieve a registered service by name.
-   *
-   * @param name - Service name (e.g., "skill-parser")
-   * @returns Service instance if found, undefined otherwise
+   * Retrieve a registered service by typed key.
+   * Type safety is guaranteed by ServiceKey<T> phantom type — no unsafe cast needed.
    */
-  get<T extends IPluginService>(name: string): T | undefined {
-    return this.services.get(name) as T | undefined;
+  get<T extends IPluginService>(key: ServiceKey<T>): T | undefined {
+    return this.services.get(key.name) as T | undefined;
   }
 
   /**
-   * Check if a service is registered.
-   *
-   * @param name - Service name
-   * @returns True if service exists, false otherwise
+   * Check if a service is registered by typed key.
    */
-  has(name: string): boolean {
-    return this.services.has(name);
+  has(key: ServiceKey<IPluginService>): boolean {
+    return this.services.has(key.name);
   }
 
   /**
@@ -63,6 +62,14 @@ export class ServiceRegistry implements IServiceRegistry {
    */
   list(): IPluginService[] {
     return Array.from(this.services.values());
+  }
+
+  /**
+   * Unregister a service by typed key.
+   * @returns True if service was found and removed, false otherwise
+   */
+  unregister(key: ServiceKey<IPluginService>): boolean {
+    return this.services.delete(key.name);
   }
 }
 

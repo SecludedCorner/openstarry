@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { createAgentCore } from "../../src/agents/agent-core.js";
 import type { IAgentConfig, IPlugin, IPluginService } from "@openstarry/sdk";
+import { ServiceKey } from "@openstarry/sdk";
 
 describe("Plugin Dependencies E2E", () => {
   const baseConfig: IAgentConfig = {
@@ -39,7 +40,7 @@ describe("Plugin Dependencies E2E", () => {
     const consumerPlugin: IPlugin = {
       manifest: { name: "math-consumer", version: "1.0.0", serviceDependencies: ["math"], sandbox: noSandbox },
       factory: async (ctx) => {
-        const math = ctx.services?.get<MathService>("math");
+        const math = ctx.services?.get(new ServiceKey<MathService>("math"));
         if (math) {
           addResult = math.add(2, 3);
         }
@@ -88,7 +89,7 @@ describe("Plugin Dependencies E2E", () => {
         sandbox: noSandbox,
       },
       factory: async (ctx) => {
-        const serviceA = ctx.services?.get<ServiceA>("service-a");
+        const serviceA = ctx.services?.get(new ServiceKey<ServiceA>("service-a"));
         ctx.services?.register<ServiceB>({
           name: "service-b",
           version: "1.0.0",
@@ -104,7 +105,7 @@ describe("Plugin Dependencies E2E", () => {
     const pluginC: IPlugin = {
       manifest: { name: "c", version: "1.0.0", serviceDependencies: ["service-b"], sandbox: noSandbox },
       factory: async (ctx) => {
-        const serviceB = ctx.services?.get<ServiceB>("service-b");
+        const serviceB = ctx.services?.get(new ServiceKey<ServiceB>("service-b"));
         if (serviceB) {
           finalResult = serviceB.transform("world");
         }
@@ -243,7 +244,7 @@ describe("Plugin Dependencies E2E", () => {
     const consumerPlugin: IPlugin = {
       manifest: { name: "consumer", version: "1.0.0", serviceDependencies: ["shared"], sandbox: noSandbox },
       factory: async (ctx) => {
-        const service = ctx.services?.get<SharedService>("shared");
+        const service = ctx.services?.get(new ServiceKey<SharedService>("shared"));
         consumerResult = service?.getData();
         return {};
       },

@@ -1,0 +1,36 @@
+// Plan49 C49-M3-§八 — audit_calc EBNF v1.1 (verbatim from O4 §2.1, 3-layer precedence)
+//
+// Right-associative '^' is mandatory: 2^3^2 = 2^9 = 512, not 8^2 = 64.
+// Precedence stratification prevents (10^-4)^(4*3) silent mis-parse.
+
+start: expression
+
+expression: add_expr
+
+!add_expr: mul_expr (("+" | "-") mul_expr)*
+
+!mul_expr: pow_expr (("*" | "×" | "/" | "÷") pow_expr)*
+
+!pow_expr: unary_expr (("^" | "**") pow_expr)?
+
+!unary_expr: "-"? atom
+
+atom: value
+    | var_name
+    | func_call
+    | "(" expression ")"
+
+value: NUMBER
+     | SCI_NOTATION
+
+func_call: IDENT "(" arg_list? ")"
+arg_list: expression ("," expression)*
+
+var_name: IDENT
+
+IDENT: /[A-Za-z_][A-Za-z0-9_]*/
+NUMBER: /[0-9]+(\.[0-9]+)?/
+SCI_NOTATION: /[0-9]+(\.[0-9]+)?[eE][-+]?[0-9]+/
+
+%import common.WS
+%ignore WS

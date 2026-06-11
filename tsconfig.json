@@ -11,6 +11,12 @@
     { "path": "../openstarry_plugin/standard-function-skill" },
     { "path": "../openstarry_plugin/transport-websocket" },
     { "path": "../openstarry_plugin/transport-http" },
-    { "path": "apps/runner" }
+    { "path": "../openstarry_plugin/transport-local-cli" },
+    { "path": "../openstarry_plugin/vasana-engine" },
+    { "path": "../openstarry_plugin/mesh" },
+    { "path": "../openstarry_plugin/provider-claude-cli" },
+    { "path": "apps/runner" },
+    { "path": "apps/channel" },
+    { "path": "../openstarry_plugin/comm-proxy" }
   ]
 }

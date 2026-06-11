@@ -149,4 +149,22 @@ const net = await import('net');
       validatePluginImports("/nonexistent/plugin.ts", {}),
     ).rejects.toThrow(/Cannot read plugin source/);
   });
+
+  it("blocks computed dynamic imports by default", async () => {
+    const filePath = join(tempDir, "plugin.ts");
+    await writeFile(filePath, `const mod = await import(someVariable);\n`);
+
+    await expect(
+      validatePluginImports(filePath, {}),
+    ).rejects.toThrow(/forbidden module/);
+  });
+
+  it("allows computed dynamic imports when blockComputedImports is false", async () => {
+    const filePath = join(tempDir, "plugin.ts");
+    await writeFile(filePath, `const mod = await import(someVariable);\n`);
+
+    await expect(
+      validatePluginImports(filePath, { blockComputedImports: false }),
+    ).resolves.toBeUndefined();
+  });
 });

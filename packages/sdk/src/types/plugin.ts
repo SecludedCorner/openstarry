@@ -5,11 +5,20 @@
 import type { EventBus, InputEvent } from "./events.js";
 import type { IProvider } from "./provider.js";
 import type { ITool } from "./tool.js";
-import type { IListener } from "./listener.js";
+import type { IListener, ITypedListener } from "./listener.js";
 import type { IUI } from "./ui.js";
 import type { IGuide } from "./guide.js";
+import type { IVedanaSensor } from "./vedana.js";
+import type { IGearArbiter } from "./gear-arbiter.js";
 import type { ISessionManager } from "./session.js";
 import type { IServiceRegistry } from "./service.js";
+import type { Skandha } from "./aggregates.js";
+import type { IVolition } from "./volition.js";
+import type { ILoopQualityMonitor } from "./loop-quality-monitor.js";
+import type { IConfidenceAuditor } from "./confidence-auditor.js";
+import type { IContextManager } from "../interfaces/context.js";
+import type { IConfirmationGate } from "./confirmation-gate.js";
+import type { ICommChannel } from "./comm-channel.js";
 
 /** Plugin manifest — metadata declared by the plugin. */
 export interface PluginManifest {
@@ -57,7 +66,48 @@ export interface PluginManifest {
    * PluginLoader will log warnings if required services are unavailable at plugin init time.
    */
   serviceDependencies?: string[];
+
+  /**
+   * Five Aggregates classification (optional).
+   * NEW IN v0.25.0-beta (Plan25 — M-7 multi-value skandha).
+   *
+   * Declares which aggregate(s) this plugin belongs to.
+   * Single value or array for cross-aggregate plugins.
+   *
+   * Example: 'samjna' or ['samskara', 'vijnana']
+   */
+  skandha?: Skandha | readonly Skandha[];
+
+  /**
+   * Plugin dependencies (optional).
+   * NEW IN v0.33.0-alpha (Plan33 OQ-33-1).
+   *
+   * List of plugin names this plugin requires to be loaded.
+   * PluginLoader validates all dependencies are present before calling factory().
+   * Missing dependencies → logger.error() + skip loading this plugin.
+   *
+   * Note: This is name-based (matches manifest.name), not version-based.
+   * Distinct from serviceDependencies which declares service-level dependencies.
+   */
+  dependencies?: string[];
+
+  /**
+   * Criticality level for this plugin (optional, default: 'optional-no-effect').
+   * NEW IN v0.33.0-alpha (Plan33 OQ-33-3).
+   *
+   * - 'required': Agent refuses to start() if this plugin is absent. throw Error().
+   * - 'optional-degraded': Agent starts but feature operates at neutral (delta=0, empty).
+   *   Wording: "安全增強層未啟用，其餘功能正常"
+   * - 'optional-no-effect': Agent starts normally, feature simply unavailable.
+   */
+  criticality?: PluginCriticality;
 }
+
+/**
+ * Plugin criticality level.
+ * NEW IN v0.33.0-alpha (Plan33 OQ-33-3).
+ */
+export type PluginCriticality = 'required' | 'optional-degraded' | 'optional-no-effect';
 
 /** Sandbox configuration for a plugin. */
 export interface SandboxConfig {
@@ -226,10 +276,34 @@ export interface IPluginContext {
 export interface PluginHooks {
   providers?: IProvider[];
   tools?: ITool[];
-  listeners?: IListener[];
+  listeners?: (ITypedListener | IListener)[];
   ui?: IUI[];  // 色蘊 — UI renderers
   guides?: IGuide[];
   commands?: SlashCommand[];
+  vedanaSensors?: IVedanaSensor[];  // 受蘊 — vedana sensors (Plan26)
+  gearArbiters?: IGearArbiter[];   // 識蘊 — gear arbiters (Plan27)
+  volition?: IVolition;            // 識蘊 — IVolition deliberation (Plan28)
+  monitors?: ILoopQualityMonitor[];  // 識蘊 — loop quality monitors (Plan29)
+  auditor?: IConfidenceAuditor;      // 識蘊 — confidence auditor (Plan29, last-wins)
+  contextManager?: IContextManager;   // 想蘊 — context assembly strategy (Plan32 Wave 6, last-wins)
+  confirmationGate?: IConfirmationGate;  // 行蘊 — T3 confirmation gate (Plan36b, last-wins)
+  commChannels?: ICommChannel[];  // 色蘊 — multi-agent communication channels (Plan37)
+  /**
+   * Called by the framework to request a state snapshot for cross-session
+   * persistence. Returns `null` when the plugin has no snapshottable state
+   * or an internal error prevents snapshotting. MUST NOT throw.
+   *
+   * Plan46 W2 / K-3 SDK framework hook. @since v0.46.0-alpha.
+   */
+  onCheckpoint?: () => PluginSnapshot | null;
+  /**
+   * Called by the framework to restore a previously captured snapshot.
+   * May throw on invalid data — the framework catches and falls back to
+   * fresh state, consistent with SafetyGate/StateTracker snapshot semantics.
+   *
+   * Plan46 W2 / K-3 SDK framework hook. @since v0.46.0-alpha.
+   */
+  onRestore?: (snapshot: PluginSnapshot) => void;
   dispose?: () => Promise<void> | void;
 }
 
@@ -264,6 +338,38 @@ export interface PluginCapabilities {
    * Security: Prevents untrusted plugins from enumerating or invoking expensive LLM providers.
    */
   allowedProviders?: string[];
+
+  /**
+   * Whitelist of tool IDs this plugin can invoke via ctx.tools (SDK type only — Plan45).
+   * - undefined or empty: plugin can access ALL tools (backward compatible default)
+   * - non-empty array: future runtime enforcement (Plan46) will filter ctx.tools.list() and ctx.tools.get() by this whitelist
+   *
+   * Runtime enforcement is DEFERRED TO PLAN46. This field exists in the SDK now so plugin manifests
+   * written against v0.45.0 will remain forward-compatible when Plan46 adds the runner-level filter proxy.
+   *
+   * Added in v0.45.0-alpha (Plan45, W3 SDK type carry-forward).
+   */
+  allowedTools?: string[];
+}
+
+/**
+ * PluginSnapshot — opaque state container for plugin checkpoint/restore.
+ *
+ * Plan46 W2 / K-3 SDK framework hook (Rule #45 re-freeze authorized R3 D10-Q32).
+ *
+ * Plugins serialize their internal state into `state` (free-form JSON-safe
+ * record). `pluginName` and `schemaVersion` identify the producer so the
+ * restore side can validate compatibility before applying the snapshot.
+ *
+ * Framework contract: the CheckpointManager treats this type as opaque.
+ *
+ * @since v0.46.0-alpha (Plan46, W2). FROZEN after delivery per Rule #45.
+ */
+export interface PluginSnapshot {
+  readonly pluginName: string;
+  readonly schemaVersion: number;
+  readonly state: Readonly<Record<string, unknown>>;
+  readonly timestamp: number;
 }
 
 /** A plugin is a factory function that returns hooks. */

@@ -4,6 +4,7 @@
 
 import type { Worker } from "node:worker_threads";
 import type { EventBus, InputEvent, ISessionManager, ITool, IGuide, IProvider } from "@openstarry/sdk";
+import { DEFAULT_SANDBOX_RPC_CONFIG } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 import type {
   SandboxMessage,
@@ -22,6 +23,37 @@ import type {
 import type { AuditLogger } from "./audit-logger.js";
 
 const logger = createLogger("SandboxRPC");
+
+/** Event prefixes that sandbox plugins are NOT allowed to emit. */
+const BLOCKED_EVENT_PREFIXES = [
+  "agent:",      // Core lifecycle
+  "loop:",       // Execution loop
+  "session:",    // Session lifecycle
+  "safety:",     // Safety system
+  "sandbox:",    // Sandbox lifecycle (managed by core)
+  "state:",      // State management
+  "metrics:",    // Observability
+] as const;
+
+// Plan32 Wave 4 (P2): Policy constant sourced from SDK defaults
+const DEFAULT_RATE_LIMIT = DEFAULT_SANDBOX_RPC_CONFIG.rateLimit;
+
+class SandboxRateLimiter {
+  private counts = new Map<string, { count: number; resetAt: number }>();
+
+  check(pluginName: string, limit: number = DEFAULT_RATE_LIMIT): boolean {
+    const now = Date.now();
+    let entry = this.counts.get(pluginName);
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + 1000 };
+      this.counts.set(pluginName, entry);
+    }
+    entry.count++;
+    return entry.count <= limit;
+  }
+}
+
+const rateLimiter = new SandboxRateLimiter();
 
 export interface RpcHandlerDeps {
   bus: EventBus;
@@ -69,7 +101,7 @@ export function attachRpcHandler(
     try {
       switch (msg.type) {
         case "BUS_EMIT":
-          handleBusEmit(msg, deps);
+          handleBusEmit(msg, deps, pluginName);
           break;
         case "BUS_SUBSCRIBE":
           if (subscriptionState) {
@@ -131,10 +163,31 @@ export function attachRpcHandler(
   return () => worker.off("message", wrappedHandler);
 }
 
-function handleBusEmit(msg: BusEmitMessage, deps: RpcHandlerDeps): void {
+function handleBusEmit(msg: BusEmitMessage, deps: RpcHandlerDeps, pluginName: string): void {
+  const eventType = msg.payload.event.type;
+
+  // Check whitelist: block core event types
+  const isBlocked = BLOCKED_EVENT_PREFIXES.some(prefix => eventType.startsWith(prefix));
+  if (isBlocked) {
+    logger.warn("Sandbox plugin attempted to emit blocked event type", {
+      pluginName,
+      eventType,
+    });
+    return;
+  }
+
+  // Check rate limit
+  if (!rateLimiter.check(pluginName)) {
+    logger.warn("Sandbox plugin exceeded event rate limit", {
+      pluginName,
+      eventType,
+    });
+    return;
+  }
+
   try {
     deps.bus.emit({
-      type: msg.payload.event.type,
+      type: eventType,
       timestamp: msg.payload.event.timestamp,
       payload: msg.payload.event.payload,
     });

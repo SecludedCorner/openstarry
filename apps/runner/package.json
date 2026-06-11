@@ -12,7 +12,8 @@
     "dev": "tsc -b --watch",
     "start": "node dist/bin.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:plugin-deps": "node scripts/verify-plugin-deps.mjs"
   },
   "dependencies": {
     "@openstarry/core": "workspace:*",
@@ -36,15 +37,32 @@
     "@openstarry-plugin/provider-gemini": "workspace:*",
     "@openstarry-plugin/provider-claude": "workspace:*",
     "@openstarry-plugin/provider-chatgpt": "workspace:*",
+    "@openstarry-plugin/provider-chatgpt-oauth": "workspace:*",
     "@openstarry-plugin/provider-local-llama": "workspace:*",
     "@openstarry-plugin/standard-model-selector": "workspace:*",
     "@openstarry-plugin/standard-core-commands": "workspace:*",
-    "@openstarry-plugin/provider-lmstudio": "workspace:*"
+    "@openstarry-plugin/provider-lmstudio": "workspace:*",
+    "@openstarry-plugin/context-sliding-window": "workspace:*",
+    "@openstarry-plugin/monitor-loop-quality": "workspace:*",
+    "@openstarry-plugin/auditor-threshold": "workspace:*",
+    "@openstarry-plugin/auditor-passthrough": "workspace:*",
+    "@openstarry-plugin/gear-arbiter-static": "workspace:*",
+    "@openstarry-plugin/gear-arbiter-dynamic": "workspace:*",
+    "@openstarry-plugin/volition-rule-engine": "workspace:*",
+    "@openstarry-plugin/comm-pipeline": "workspace:*",
+    "@openstarry-plugin/comm-proxy": "workspace:*",
+    "@openstarry-plugin/confirmation-gate-standard": "workspace:*",
+    "@openstarry-plugin/context-summary": "workspace:*",
+    "@openstarry-plugin/distributed-alaya": "workspace:*",
+    "@openstarry-plugin/guide-persistent": "workspace:*",
+    "@openstarry-plugin/spc-monitor": "workspace:*",
+    "@openstarry-plugin/vedana-sensor-core": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
     "rimraf": "^5.0.0",
     "vitest": "^4.0.18",
-    "@types/node": "^20.0.0"
+    "@types/node": "^25.2.0"
   }
 }

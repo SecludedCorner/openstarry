@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import type { IProvider, IAgentConfig, PluginManifest } from "@openstarry/sdk";
+import type { IPlugin, IProvider, IAgentConfig, PluginManifest } from "@openstarry/sdk";
+import { AgentEventType } from "@openstarry/sdk";
 import { createAgentCore } from "../agent-core.js";
 
 describe("Plugin Context Provider Access Control", () => {
@@ -14,6 +15,7 @@ describe("Plugin Context Provider Access Control", () => {
   });
 
   const createMockProvider = (id: string, name: string): IProvider => ({
+    skandha: "samjna" as const,
     id,
     name,
     models: [{ id: `${id}-model`, name: `${name} Model` }],
@@ -182,5 +184,80 @@ describe("Plugin Context Provider Access Control", () => {
 
     expect(capturedContext.providers.get("openai")).toBeDefined();
     expect(capturedContext.providers.get("anthropic")).toBeDefined();
+  });
+});
+
+describe("AgentCore.loadPlugins", () => {
+  const createMockConfig = (): IAgentConfig => ({
+    identity: { id: "test-agent", name: "Test Agent" },
+    plugins: [],
+    cognition: {
+      provider: "test-provider",
+      model: "test-model",
+    },
+    capabilities: {},
+  });
+
+  it("loads multiple plugins with dependency ordering", async () => {
+    const core = createAgentCore(createMockConfig());
+
+    const loadOrder: string[] = [];
+
+    const pluginA: IPlugin = {
+      manifest: {
+        name: "plugin-a",
+        version: "1.0.0",
+        description: "Provider plugin",
+        services: ["svc-a"],
+        sandbox: { enabled: false },
+      },
+      factory: () => {
+        loadOrder.push("plugin-a");
+        return {};
+      },
+    };
+
+    const pluginB: IPlugin = {
+      manifest: {
+        name: "plugin-b",
+        version: "1.0.0",
+        description: "Dependent plugin",
+        serviceDependencies: ["svc-a"],
+        sandbox: { enabled: false },
+      },
+      factory: () => {
+        loadOrder.push("plugin-b");
+        return {};
+      },
+    };
+
+    // Pass B before A — loadPlugins should sort A first via topological sort
+    await core.loadPlugins([pluginB, pluginA]);
+
+    expect(loadOrder).toEqual(["plugin-a", "plugin-b"]);
+  });
+
+  it("emits PLUGIN_LOADED for each plugin", async () => {
+    const core = createAgentCore(createMockConfig());
+
+    const events: string[] = [];
+    core.bus.on(AgentEventType.PLUGIN_LOADED, (evt) => {
+      events.push((evt.payload as { name: string }).name);
+    });
+
+    const pluginA: IPlugin = {
+      manifest: { name: "alpha", version: "1.0.0", description: "A", sandbox: { enabled: false } },
+      factory: () => ({}),
+    };
+    const pluginB: IPlugin = {
+      manifest: { name: "beta", version: "1.0.0", description: "B", sandbox: { enabled: false } },
+      factory: () => ({}),
+    };
+
+    await core.loadPlugins([pluginA, pluginB]);
+
+    expect(events).toContain("alpha");
+    expect(events).toContain("beta");
+    expect(events).toHaveLength(2);
   });
 });

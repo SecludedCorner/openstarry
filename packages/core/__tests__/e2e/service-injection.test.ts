@@ -1,11 +1,12 @@
 /**
  * Integration tests for cross-plugin service injection.
+ * Plan41 W1: Updated to use ServiceKey<T> typed API (AC-TSR-2/3).
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createServiceRegistry } from "../../src/infrastructure/service-registry.js";
 import type { IPluginService, IServiceRegistry } from "@openstarry/sdk";
-import { ServiceRegistrationError } from "@openstarry/sdk";
+import { ServiceKey, ServiceRegistrationError } from "@openstarry/sdk";
 
 interface ICustomService extends IPluginService {
   customMethod(): string;
@@ -27,23 +28,26 @@ describe("Service Injection - E2E", () => {
     };
     registry.register(parserService);
 
-    // Plugin B (consumer)
-    const retrieved = registry.get<ICustomService>("skill-parser");
+    // Plugin B (consumer) — uses typed ServiceKey
+    const key = new ServiceKey<ICustomService>("skill-parser");
+    const retrieved = registry.get(key);
     expect(retrieved).toBeDefined();
     expect(retrieved?.customMethod()).toBe("parsed result");
   });
 
   it("Plugin B loads before Plugin A results in service unavailable (load order matters)", () => {
+    const key = new ServiceKey<IPluginService>("nonexistent-service");
     // Plugin B tries to get service before A registers it
-    const service = registry.get("nonexistent-service");
+    const service = registry.get(key);
     expect(service).toBeUndefined();
 
     // Plugin A registers later
     const lateService: IPluginService = { name: "late-service", version: "1.0.0" };
+    const lateKey = new ServiceKey<IPluginService>("late-service");
     registry.register(lateService);
 
     // Now B can get it
-    const retrieved = registry.get("late-service");
+    const retrieved = registry.get(lateKey);
     expect(retrieved).toBe(lateService);
   });
 
@@ -77,7 +81,8 @@ describe("Service Injection - E2E", () => {
     };
 
     registry.register(advancedService);
-    const retrieved = registry.get<IAdvancedService>("calculator");
+    const key = new ServiceKey<IAdvancedService>("calculator");
+    const retrieved = registry.get(key);
 
     expect(retrieved?.calculate(2, 3)).toBe(5);
     expect(retrieved?.format("test")).toBe("Result: test");
@@ -86,6 +91,7 @@ describe("Service Injection - E2E", () => {
   it("Plugin attempts to register duplicate service name results in error propagated", () => {
     const service1: IPluginService = { name: "duplicate", version: "1.0.0" };
     const service2: IPluginService = { name: "duplicate", version: "2.0.0" };
+    const key = new ServiceKey<IPluginService>("duplicate");
 
     registry.register(service1);
 
@@ -93,38 +99,32 @@ describe("Service Injection - E2E", () => {
     expect(() => registry.register(service2)).toThrow('Service "duplicate" is already registered');
 
     // First registration still exists
-    expect(registry.get("duplicate")).toBe(service1);
+    expect(registry.get(key)).toBe(service1);
   });
 
   it("Plugin with serviceDependencies but service unavailable results in warning (tested elsewhere)", () => {
-    // This test is primarily handled by PluginLoader tests
-    // Here we just verify registry behavior
-    const service = registry.get("missing-dependency");
+    const key = new ServiceKey<IPluginService>("missing-dependency");
+    const service = registry.get(key);
     expect(service).toBeUndefined();
   });
 
   it("Mock service registry injected for testing purposes", () => {
-    // Create a mock registry for testing
     const mockRegistry = createServiceRegistry();
     const mockService: IPluginService = { name: "mock-service", version: "0.0.1" };
+    const key = new ServiceKey<IPluginService>("mock-service");
     mockRegistry.register(mockService);
 
-    // Verify mock works independently
-    expect(mockRegistry.get("mock-service")).toBe(mockService);
-    expect(registry.get("mock-service")).toBeUndefined();
+    expect(mockRegistry.get(key)).toBe(mockService);
+    expect(registry.get(key)).toBeUndefined();
   });
 
   it("Service registry cleared between test cases (no cross-test contamination)", () => {
-    // This test should start with clean state
     expect(registry.list()).toHaveLength(0);
 
-    // Add a service
     const service: IPluginService = { name: "temp", version: "1.0.0" };
     registry.register(service);
 
     expect(registry.list()).toHaveLength(1);
-
-    // Next test will have clean state (verified by beforeEach)
   });
 
   it("Service with complex nested data structures", () => {
@@ -151,7 +151,8 @@ describe("Service Injection - E2E", () => {
     };
 
     registry.register(dataService);
-    const retrieved = registry.get<IDataService>("data-service");
+    const key = new ServiceKey<IDataService>("data-service");
+    const retrieved = registry.get(key);
 
     expect(retrieved?.data.nested.value).toBe("test");
     expect(retrieved?.data.nested.items).toEqual(["a", "b", "c"]);

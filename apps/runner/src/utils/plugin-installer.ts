@@ -6,8 +6,8 @@
  *   2. npm fallback: `npm pack` + extract to ~/.openstarry/plugins/installed/
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, cp, rm, readFile } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { mkdir, cp, rm, readFile, mkdtemp } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -20,6 +20,12 @@ export interface InstallOptions {
   force?: boolean;
   verbose?: boolean;
   lockPath?: string;
+  /**
+   * Override the plugin install target directory. Defaults to `~/.openstarry/plugins/installed/`.
+   * Test isolation: pass a tempDir-scoped path so parallel test files do not race on the
+   * single user-global directory (Plan49 C49-M1 root cause).
+   */
+  installedDir?: string;
 }
 
 export interface InstallResult {
@@ -28,7 +34,25 @@ export interface InstallResult {
   failed: Array<{ name: string; error: string }>;
 }
 
-const INSTALLED_DIR = join(PLUGINS_DIR, "installed");
+/** Default install directory. Overridable via `InstallOptions.installedDir`. */
+export const DEFAULT_INSTALLED_DIR = join(PLUGINS_DIR, "installed");
+
+/**
+ * Resolve the effective lock path and install dir for a call. The ladder is:
+ *   option → process.env → module default.
+ * Plan49 C49-M1: keeps the 3 call-sites (`installPlugin`, `uninstallPlugin`,
+ * `installAll`) in sync without copy-pasting the env-var fallback.
+ */
+function resolveInstallPaths(options: InstallOptions): {
+  lockPath: string;
+  installedDir: string;
+} {
+  return {
+    lockPath: options.lockPath ?? process.env.OPENSTARRY_LOCK_PATH ?? LOCK_FILE_PATH,
+    installedDir:
+      options.installedDir ?? process.env.OPENSTARRY_INSTALL_DIR ?? DEFAULT_INSTALLED_DIR,
+  };
+}
 
 /**
  * Derive the directory name from a scoped package name.
@@ -67,8 +91,9 @@ export async function installPlugin(
   name: string,
   options: InstallOptions = {},
 ): Promise<{ success: boolean; error?: string }> {
-  const { force = false, verbose = false, lockPath } = options;
-  const effectiveLockPath = lockPath ?? LOCK_FILE_PATH;
+  const { force = false, verbose = false } = options;
+  const { lockPath: effectiveLockPath, installedDir: effectiveInstalledDir } =
+    resolveInstallPaths(options);
 
   // Check if already installed (skip unless --force)
   if (!force && (await isInstalled(name, effectiveLockPath))) {
@@ -83,10 +108,10 @@ export async function installPlugin(
   const version = entry?.version ?? "0.0.0";
 
   const dirName = dirNameFromPackage(name);
-  const targetDir = join(INSTALLED_DIR, dirName);
+  const targetDir = join(effectiveInstalledDir, dirName);
 
   // Ensure installed directory exists
-  await mkdir(INSTALLED_DIR, { recursive: true });
+  await mkdir(effectiveInstalledDir, { recursive: true });
 
   // Strategy 1: Workspace resolution
   const workspacePath = resolveFromWorkspace(name);
@@ -105,8 +130,9 @@ export async function installPlugin(
     if (verbose) {
       console.log(`  [npm] Fetching ${name}...`);
     }
-    const tmpDir = join(tmpdir(), `openstarry-install-${Date.now()}`);
-    await mkdir(tmpDir, { recursive: true });
+    // mkdtemp gives a unique dir without hand-rolling a PID/time/random suffix —
+    // prevents same-millisecond collisions across parallel vitest threads (Plan49 C49-M1b).
+    const tmpDir = await mkdtemp(join(tmpdir(), "openstarry-install-"));
 
     try {
       execSync(`npm pack ${name} --pack-destination "${tmpDir}"`, {
@@ -116,8 +142,6 @@ export async function installPlugin(
         timeout: 30000,
       });
 
-      // Find the tarball
-      const { readdirSync } = await import("node:fs");
       const files = readdirSync(tmpDir).filter(f => f.endsWith(".tgz"));
       if (files.length === 0) {
         return { success: false, error: "npm pack produced no tarball" };
@@ -173,11 +197,12 @@ export async function uninstallPlugin(
   name: string,
   options: InstallOptions = {},
 ): Promise<{ success: boolean; error?: string }> {
-  const { verbose = false, lockPath } = options;
-  const effectiveLockPath = lockPath ?? LOCK_FILE_PATH;
+  const { verbose = false } = options;
+  const { lockPath: effectiveLockPath, installedDir: effectiveInstalledDir } =
+    resolveInstallPaths(options);
 
   const dirName = dirNameFromPackage(name);
-  const targetDir = join(INSTALLED_DIR, dirName);
+  const targetDir = join(effectiveInstalledDir, dirName);
 
   // Remove from installed directory
   if (existsSync(targetDir)) {
@@ -200,10 +225,10 @@ export async function installAll(options: InstallOptions = {}): Promise<InstallR
   const entries = getAllCatalogEntries();
   const result: InstallResult = { installed: [], skipped: [], failed: [] };
 
-  for (const entry of entries) {
-    const { force = false, lockPath } = options;
-    const effectiveLockPath = lockPath ?? LOCK_FILE_PATH;
+  const { force = false } = options;
+  const { lockPath: effectiveLockPath } = resolveInstallPaths(options);
 
+  for (const entry of entries) {
     if (!force && (await isInstalled(entry.name, effectiveLockPath))) {
       result.skipped.push(entry.name);
       if (options.verbose) {

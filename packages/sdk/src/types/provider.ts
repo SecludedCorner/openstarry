@@ -1,9 +1,11 @@
 /**
- * Provider interface — LLM backends.
+ * Provider adapter interface.
+ * @skandha samjna (想蘊 — 認知處理)
  */
 
 import type { Message, ProviderStreamEvent } from "./message.js";
 import type { ToolJsonSchema } from "./tool.js";
+import type { ISamjna } from "./aggregates.js";
 
 /** Information about a model offered by a provider. */
 export interface ModelInfo {
@@ -35,7 +37,7 @@ export interface LoginHint {
 }
 
 /** Provider adapter interface. */
-export interface IProvider {
+export interface IProvider extends ISamjna {
   id: string;
   name: string;
   models: ModelInfo[];

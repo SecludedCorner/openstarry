@@ -1,0 +1,79 @@
+name: Cross-OS CI (Plan52 D-§1-08)
+
+# Plan52 R3 D-§1-08 UNANIMOUS — cross-OS CI matrix MUST run on Linux + Windows.
+# Catches path-separator bugs, line-ending bugs, process-creation differences.
+# Complements Rule #75 §75.X release-tag pnpm build at the per-PR level.
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: build+test (${{ matrix.os }} / Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22.x"]
+    defaults:
+      run:
+        working-directory: agent_dev/openstarry
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: agent_dev/openstarry/pnpm-lock.yaml
+
+      - name: pnpm install (frozen-lockfile per Rule #75 §75.X)
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm build (45+ workspaces)
+        run: pnpm build
+
+      - name: pnpm test (vitest, full monorepo)
+        run: pnpm test
+
+      - name: Microkernel purity check (MR-6 baseline)
+        run: pnpm test:purity
+
+      - name: verify-package-deps (informational)
+        run: node tools/verify-package-deps.mjs
+
+  release-tag-gate:
+    name: Rule #75 §75.X release-tag gate
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: agent_dev/openstarry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+          cache-dependency-path: agent_dev/openstarry/pnpm-lock.yaml
+
+      - name: Fresh-state install + build (Rule #75 §75.X)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Capture build artefact hash
+        run: |
+          tar -cf - dist apps/runner/dist apps/channel/dist packages/*/dist 2>/dev/null | sha256sum | tee artefact-sha256.txt

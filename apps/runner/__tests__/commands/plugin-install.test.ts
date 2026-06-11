@@ -1,8 +1,13 @@
 /**
  * PluginInstallCommand unit tests.
+ *
+ * Test isolation (Plan49 C49-M1): CLI-layer tests route through the installPlugin util
+ * which reads OPENSTARRY_INSTALL_DIR / OPENSTARRY_LOCK_PATH env vars when no explicit
+ * option is passed. We set these per-test-file to a PID-scoped tempDir so parallel
+ * vitest threads do not race on ~/.openstarry/plugins/installed/.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -11,6 +16,30 @@ import type { ParsedArgs } from "../../src/commands/base.js";
 import { PluginInstallCommand } from "../../src/commands/plugin-install.js";
 
 describe("PluginInstallCommand", () => {
+  let testHome: string;
+  let savedInstallDir: string | undefined;
+  let savedLockPath: string | undefined;
+
+  beforeAll(async () => {
+    const unique = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    testHome = join(tmpdir(), `plugin-install-cmd-test-${unique}`);
+    await mkdir(join(testHome, "installed"), { recursive: true });
+    savedInstallDir = process.env.OPENSTARRY_INSTALL_DIR;
+    savedLockPath = process.env.OPENSTARRY_LOCK_PATH;
+    process.env.OPENSTARRY_INSTALL_DIR = join(testHome, "installed");
+    process.env.OPENSTARRY_LOCK_PATH = join(testHome, "lock.json");
+  });
+
+  afterAll(async () => {
+    if (savedInstallDir === undefined) delete process.env.OPENSTARRY_INSTALL_DIR;
+    else process.env.OPENSTARRY_INSTALL_DIR = savedInstallDir;
+    if (savedLockPath === undefined) delete process.env.OPENSTARRY_LOCK_PATH;
+    else process.env.OPENSTARRY_LOCK_PATH = savedLockPath;
+    if (existsSync(testHome)) {
+      await rm(testHome, { recursive: true, force: true });
+    }
+  });
+
   describe("Command metadata", () => {
     it("has correct name", () => {
       const cmd = new PluginInstallCommand();

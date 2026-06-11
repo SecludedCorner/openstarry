@@ -27,6 +27,7 @@ function createMockDeps(): RpcHandlerDeps {
   };
 
   const mockTool: ITool = {
+    skandha: "samskara" as const,
     id: "tool-1",
     description: "Test tool",
     parameters: z.object({ input: z.string() }),
@@ -34,6 +35,7 @@ function createMockDeps(): RpcHandlerDeps {
   };
 
   const mockGuide: IGuide = {
+    skandha: "vijnana" as const,
     id: "guide-1",
     name: "Test guide",
     getSystemPrompt: vi.fn(async () => "You are a helpful assistant"),

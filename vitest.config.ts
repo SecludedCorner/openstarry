@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { assertionCoverageReporter } from "./packages/core/src/testing/assertion-coverage-reporter.js";
 
 export default defineConfig({
   test: {
@@ -12,5 +13,6 @@ export default defineConfig({
     environment: "node",
     globals: false,
     testTimeout: 10000,
+    reporters: ["default", assertionCoverageReporter],
   },
 });

@@ -194,6 +194,7 @@ describe("Plugin Loader + Sandbox Integration", () => {
     const { z } = await import("zod");
 
     const mockTool: ITool = {
+      skandha: "samskara" as const,
       id: "sandboxed-tool",
       description: "A tool from sandboxed plugin",
       parameters: z.object({ input: z.string() }),

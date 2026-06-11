@@ -1,10 +1,11 @@
 /**
  * Unit tests for ServiceRegistry.
+ * Plan41 W1: Updated to use ServiceKey<T> typed API (AC-TSR-2/3).
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { ServiceRegistry, createServiceRegistry } from "../../src/infrastructure/service-registry.js";
-import { ServiceRegistrationError } from "@openstarry/sdk";
+import { ServiceRegistrationError, ServiceKey } from "@openstarry/sdk";
 import type { IPluginService } from "@openstarry/sdk";
 
 describe("ServiceRegistry", () => {
@@ -17,9 +18,10 @@ describe("ServiceRegistry", () => {
   describe("register()", () => {
     it("successfully registers a service", () => {
       const service: IPluginService = { name: "test-service", version: "1.0.0" };
+      const key = new ServiceKey<IPluginService>("test-service");
 
       expect(() => registry.register(service)).not.toThrow();
-      expect(registry.get("test-service")).toBe(service);
+      expect(registry.get(key)).toBe(service);
     });
 
     it("throws ServiceRegistrationError if service name already exists", () => {
@@ -34,9 +36,10 @@ describe("ServiceRegistry", () => {
 
     it("stores service with correct name and version", () => {
       const service: IPluginService = { name: "parser", version: "1.2.3" };
+      const key = new ServiceKey<IPluginService>("parser");
 
       registry.register(service);
-      const retrieved = registry.get("parser");
+      const retrieved = registry.get(key);
 
       expect(retrieved).toBeDefined();
       expect(retrieved?.name).toBe("parser");
@@ -58,22 +61,24 @@ describe("ServiceRegistry", () => {
   });
 
   describe("get()", () => {
-    it("retrieves registered service by name", () => {
+    it("retrieves registered service by ServiceKey", () => {
       const service: IPluginService = { name: "my-service", version: "1.0.0" };
+      const key = new ServiceKey<IPluginService>("my-service");
       registry.register(service);
 
-      const retrieved = registry.get("my-service");
+      const retrieved = registry.get(key);
 
       expect(retrieved).toBe(service);
     });
 
     it("returns undefined for non-existent service", () => {
-      const retrieved = registry.get("nonexistent");
+      const key = new ServiceKey<IPluginService>("nonexistent");
+      const retrieved = registry.get(key);
 
       expect(retrieved).toBeUndefined();
     });
 
-    it("maintains type safety with generics", () => {
+    it("maintains type safety with ServiceKey generics", () => {
       interface ICustomService extends IPluginService {
         customMethod(): string;
       }
@@ -83,9 +88,10 @@ describe("ServiceRegistry", () => {
         version: "1.0.0",
         customMethod: () => "result",
       };
+      const key = new ServiceKey<ICustomService>("custom");
 
       registry.register(service);
-      const retrieved = registry.get<ICustomService>("custom");
+      const retrieved = registry.get(key);
 
       expect(retrieved?.customMethod()).toBe("result");
     });
@@ -94,13 +100,15 @@ describe("ServiceRegistry", () => {
   describe("has()", () => {
     it("returns true for registered service", () => {
       const service: IPluginService = { name: "my-service", version: "1.0.0" };
+      const key = new ServiceKey<IPluginService>("my-service");
       registry.register(service);
 
-      expect(registry.has("my-service")).toBe(true);
+      expect(registry.has(key)).toBe(true);
     });
 
     it("returns false for non-existent service", () => {
-      expect(registry.has("nonexistent")).toBe(false);
+      const key = new ServiceKey<IPluginService>("nonexistent");
+      expect(registry.has(key)).toBe(false);
     });
   });
 
@@ -161,25 +169,63 @@ describe("ServiceRegistry", () => {
       const parser: IPluginService = { name: "parser", version: "1.0.0" };
       const renderer: IPluginService = { name: "renderer", version: "2.0.0" };
       const validator: IPluginService = { name: "validator", version: "3.0.0" };
+      const parserKey = new ServiceKey<IPluginService>("parser");
+      const rendererKey = new ServiceKey<IPluginService>("renderer");
+      const validatorKey = new ServiceKey<IPluginService>("validator");
 
       registry.register(parser);
       registry.register(renderer);
       registry.register(validator);
 
-      expect(registry.get("parser")).toBe(parser);
-      expect(registry.get("renderer")).toBe(renderer);
-      expect(registry.get("validator")).toBe(validator);
+      expect(registry.get(parserKey)).toBe(parser);
+      expect(registry.get(rendererKey)).toBe(renderer);
+      expect(registry.get(validatorKey)).toBe(validator);
       expect(registry.list()).toHaveLength(3);
     });
 
     it("rejects service with same name but different version (duplicate check)", () => {
       const v1: IPluginService = { name: "my-service", version: "1.0.0" };
       const v2: IPluginService = { name: "my-service", version: "2.0.0" };
+      const key = new ServiceKey<IPluginService>("my-service");
 
       registry.register(v1);
 
       expect(() => registry.register(v2)).toThrow(ServiceRegistrationError);
-      expect(registry.get("my-service")).toBe(v1);
+      expect(registry.get(key)).toBe(v1);
+    });
+  });
+
+  describe("unregister()", () => {
+    it("removes a registered service and returns true", () => {
+      const service: IPluginService = { name: "removable", version: "1.0.0" };
+      const key = new ServiceKey<IPluginService>("removable");
+      registry.register(service);
+
+      const result = registry.unregister(key);
+
+      expect(result).toBe(true);
+      expect(registry.has(key)).toBe(false);
+      expect(registry.get(key)).toBeUndefined();
+      expect(registry.list()).toHaveLength(0);
+    });
+
+    it("returns false for non-existent service", () => {
+      const key = new ServiceKey<IPluginService>("nonexistent");
+      const result = registry.unregister(key);
+
+      expect(result).toBe(false);
+    });
+
+    it("allows re-registration after unregister", () => {
+      const service1: IPluginService = { name: "reusable", version: "1.0.0" };
+      const service2: IPluginService = { name: "reusable", version: "2.0.0" };
+      const key = new ServiceKey<IPluginService>("reusable");
+
+      registry.register(service1);
+      registry.unregister(key);
+      registry.register(service2);
+
+      expect(registry.get(key)).toBe(service2);
     });
   });
 
@@ -187,6 +233,7 @@ describe("ServiceRegistry", () => {
     it("separate registries do not interfere", () => {
       const registry1 = new ServiceRegistry();
       const registry2 = new ServiceRegistry();
+      const key = new ServiceKey<IPluginService>("shared-name");
 
       const service1: IPluginService = { name: "shared-name", version: "1.0.0" };
       const service2: IPluginService = { name: "shared-name", version: "2.0.0" };
@@ -194,8 +241,8 @@ describe("ServiceRegistry", () => {
       registry1.register(service1);
       registry2.register(service2);
 
-      expect(registry1.get("shared-name")).toBe(service1);
-      expect(registry2.get("shared-name")).toBe(service2);
+      expect(registry1.get(key)).toBe(service1);
+      expect(registry2.get(key)).toBe(service2);
     });
   });
 
@@ -212,6 +259,7 @@ describe("ServiceRegistry", () => {
     it("each invocation creates independent registry", () => {
       const registry1 = createServiceRegistry();
       const registry2 = createServiceRegistry();
+      const key = new ServiceKey<IPluginService>("test");
 
       const service: IPluginService = { name: "test", version: "1.0.0" };
       registry1.register(service);

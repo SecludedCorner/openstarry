@@ -8,9 +8,32 @@ import type {
   EventBus,
   AgentEvent,
   InputEvent,
+  IPlugin,
+  IPluginContext,
+  PluginHooks,
+  IContextManager,
+  Message,
 } from "@openstarry/sdk";
 import { createAgentCore, type AgentCore } from "@openstarry/core";
 import { MockProvider } from "./mock-provider.js";
+
+function createMockContextManagerPlugin(): IPlugin {
+  return {
+    manifest: {
+      name: "@test/mock-context-manager",
+      version: "0.0.0",
+      skandha: "samjna",
+    },
+    async factory(_ctx: IPluginContext): Promise<PluginHooks> {
+      const contextManager: IContextManager = {
+        assembleContext(messages: Message[], _maxTurns: number): Message[] {
+          return messages;
+        },
+      };
+      return { contextManager };
+    },
+  };
+}
 
 export interface IAgentTestFixture {
   core: AgentCore;
@@ -76,6 +99,7 @@ export function createAgentFixture(
     mockProvider,
 
     async start() {
+      await core.loadPlugin(createMockContextManagerPlugin());
       await core.start();
     },
 

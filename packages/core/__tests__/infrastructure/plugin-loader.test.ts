@@ -12,7 +12,7 @@ import { createUIRegistry } from "../../src/infrastructure/ui-registry.js";
 import { createGuideRegistry } from "../../src/infrastructure/guide-registry.js";
 import { createCommandRegistry } from "../../src/infrastructure/command-registry.js";
 import type { IPlugin, IPluginContext, IPluginService } from "@openstarry/sdk";
-import { PluginLoadError } from "@openstarry/sdk";
+import { PluginLoadError, ServiceKey } from "@openstarry/sdk";
 
 describe("PluginLoader - Topological Sort", () => {
   let loader: ReturnType<typeof createPluginLoader>;
@@ -76,7 +76,7 @@ describe("PluginLoader - Topological Sort", () => {
         manifest: { name: "consumer", version: "1.0.0", serviceDependencies: ["service-a"] },
         factory: async (ctx) => {
           loadOrder.push("consumer");
-          expect(ctx.services?.get("service-a")).toBeDefined();
+          expect(ctx.services?.get(new ServiceKey<IPluginService>("service-a"))).toBeDefined();
           return {};
         },
       };

@@ -6,6 +6,7 @@
 
 import type { IAgentConfig } from "@openstarry/sdk";
 import { AgentConfigSchema } from "@openstarry/shared";
+import { applySchemaDriftPolicy } from "../schema-drift-policy/index.js";
 
 /**
  * Individual validation error with context.
@@ -42,17 +43,23 @@ export interface ConfigValidationResult {
  * Validate agent configuration with Zod schema + semantic rules.
  */
 export function validateConfig(config: unknown): ConfigValidationResult {
-  // 1. Zod schema validation
-  const result = AgentConfigSchema.safeParse(config);
-  if (!result.success) {
+  // 1. Zod schema validation — routed through Plan49 C49-M3 schema-drift policy.
+  // Strict mode throws SchemaDriftError at the module boundary; tolerant/audited
+  // surface the zod issues here for detailed reporting.
+  const policy = applySchemaDriftPolicy(AgentConfigSchema, config, "IAgentConfig");
+  if (!policy.ok) {
     return {
       valid: false,
-      errors: parseZodErrors(result.error),
+      errors: policy.issues.map((i) => ({
+        path: i.path,
+        message: i.message,
+        severity: "error" as const,
+      })),
     };
   }
 
   // 2. Semantic validation (beyond schema)
-  const allErrors = validateSemantics(result.data as IAgentConfig);
+  const allErrors = validateSemantics(policy.data as IAgentConfig);
 
   // Determine validity based on error severity
   const hasErrors = allErrors.some(e => e.severity === "error");
@@ -66,7 +73,7 @@ export function validateConfig(config: unknown): ConfigValidationResult {
   // Valid but may have warnings
   return {
     valid: true,
-    config: result.data as IAgentConfig,
+    config: policy.data as IAgentConfig,
     errors: allErrors.length > 0 ? allErrors : undefined,
   };
 }
@@ -116,15 +123,4 @@ function validateSemantics(config: IAgentConfig): ConfigValidationError[] {
 
   // Return all errors and warnings
   return errors;
-}
-
-/**
- * Convert Zod errors to ConfigValidationError format.
- */
-function parseZodErrors(zodError: { issues: Array<{ path: Array<string | number>; message: string }> }): ConfigValidationError[] {
-  return zodError.issues.map((issue: { path: Array<string | number>; message: string }) => ({
-    path: issue.path.join("."),
-    message: issue.message,
-    severity: "error" as const,
-  }));
 }

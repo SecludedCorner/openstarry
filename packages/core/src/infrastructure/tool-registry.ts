@@ -1,5 +1,6 @@
 /**
  * ToolRegistry — manages registered tools.
+ * @skandha samskara (行蘊 — 意志行動)
  */
 
 import type { ITool, ToolJsonSchema } from "@openstarry/sdk";

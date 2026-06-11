@@ -2,11 +2,51 @@
  * SecurityLayer — tool call interception, path safety, guardrails.
  */
 
-import { resolve, normalize } from "node:path";
+import { resolve, normalize, dirname, basename } from "node:path";
+import { realpathSync, lstatSync } from "node:fs";
 import { SecurityError, SessionConfig, getSessionConfig } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("Security");
+
+/**
+ * Check if a path is a symbolic link using lstatSync.
+ * Returns false on any error (e.g., path does not exist).
+ */
+export function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if targetPath is safely within basePath (no traversal).
+ */
+export function isPathSafe(basePath: string, targetPath: string): boolean {
+  const resolvedBase = resolve(normalize(basePath));
+  const resolvedTarget = resolve(normalize(targetPath));
+  return resolvedTarget === resolvedBase ||
+    resolvedTarget.startsWith(resolvedBase + "/") ||
+    resolvedTarget.startsWith(resolvedBase + "\\");
+}
+
+function safeRealpath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    // File doesn't exist yet — resolve parent to catch symlinks in ancestors
+    const resolved = resolve(normalize(p));
+    const parent = dirname(resolved);
+    const tail = basename(resolved);
+    try {
+      return resolve(realpathSync(parent), tail);
+    } catch {
+      return resolved;
+    }
+  }
+}
 
 export interface SecurityLayer {
   /**
@@ -34,11 +74,11 @@ export function createSecurityLayer(
   getSessionConfigFn?: (sessionId?: string) => SessionConfig | undefined,
 ): SecurityLayer {
   // Normalize all allowed paths at creation time
-  const normalizedAllowed = allowedPaths.map((p) => resolve(normalize(p)));
+  const normalizedAllowed = allowedPaths.map((p) => safeRealpath(p));
 
   return {
     validatePath(targetPath: string, sessionId?: string): void {
-      const normalizedTarget = resolve(normalize(targetPath));
+      const normalizedTarget = safeRealpath(targetPath);
 
       // Get effective allowed paths (session override if present)
       let effectivePaths = normalizedAllowed;
@@ -46,7 +86,7 @@ export function createSecurityLayer(
         const sessionConfig = getSessionConfigFn(sessionId);
         if (sessionConfig?.allowedPaths && sessionConfig.allowedPaths.length > 0) {
           // Session paths must be subset of agent paths
-          const sessionPaths = sessionConfig.allowedPaths.map(p => resolve(normalize(p)));
+          const sessionPaths = sessionConfig.allowedPaths.map(p => safeRealpath(p));
           const validSessionPaths = sessionPaths.filter(sessionPath =>
             normalizedAllowed.some(agentPath =>
               sessionPath === agentPath || sessionPath.startsWith(agentPath + "/") || sessionPath.startsWith(agentPath + "\\")

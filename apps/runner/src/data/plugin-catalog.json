@@ -121,6 +121,13 @@
       "tags": ["provider", "chatgpt", "openai", "llm"]
     },
     {
+      "name": "@openstarry-plugin/provider-chatgpt-oauth",
+      "description": "ChatGPT provider with OpenAI Codex OAuth (PKCE) authentication",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IProvider"],
+      "tags": ["provider", "chatgpt", "openai", "oauth", "llm"]
+    },
+    {
       "name": "@openstarry-plugin/provider-gemini",
       "description": "Google Gemini LLM provider with API key authentication",
       "version": "0.19.0",
@@ -154,6 +161,111 @@
       "version": "0.19.0",
       "aggregates": [],
       "tags": ["standard", "commands", "core"]
+    },
+    {
+      "name": "@openstarry-plugin/context-sliding-window",
+      "description": "Sliding window context manager for message history truncation (Required)",
+      "version": "0.32.0",
+      "aggregates": ["IContextManager"],
+      "tags": ["context", "sliding-window", "required"]
+    },
+    {
+      "name": "@openstarry-plugin/monitor-loop-quality",
+      "description": "4D loop quality monitor (coherence/efficiency/convergence/stability)",
+      "version": "0.32.0",
+      "aggregates": ["ILoopQualityMonitor"],
+      "tags": ["monitor", "quality", "loop"]
+    },
+    {
+      "name": "@openstarry-plugin/auditor-threshold",
+      "description": "Risk-based confidence auditor with threshold rules per RiskCategory",
+      "version": "0.32.0",
+      "aggregates": ["IConfidenceAuditor"],
+      "tags": ["auditor", "confidence", "security"]
+    },
+    {
+      "name": "@openstarry-plugin/auditor-passthrough",
+      "description": "Passthrough auditor (delta=0) for audit pipeline logging without modification",
+      "version": "0.32.0",
+      "aggregates": ["IConfidenceAuditor"],
+      "tags": ["auditor", "passthrough", "logging"]
+    },
+    {
+      "name": "@openstarry-plugin/gear-arbiter-static",
+      "description": "Static gear arbiter with configurable routing rules",
+      "version": "0.19.0",
+      "aggregates": ["IGearArbiter"],
+      "tags": ["gear", "arbiter", "routing"]
+    },
+    {
+      "name": "@openstarry-plugin/gear-arbiter-dynamic",
+      "description": "WIENER control theory adaptive gear arbiter with Phase 3 shadow decision",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IGearArbiter"],
+      "tags": ["gear", "arbiter", "dynamic", "wiener", "phase3"]
+    },
+    {
+      "name": "@openstarry-plugin/spc-monitor",
+      "description": "Statistical Process Control monitor for Phase 3 shadow decisions (Shewhart chart)",
+      "version": "0.1.0-alpha",
+      "aggregates": [],
+      "tags": ["monitor", "spc", "phase3", "shewhart"]
+    },
+    {
+      "name": "@openstarry-plugin/comm-pipeline",
+      "description": "Communication pipeline channel for multi-agent message routing",
+      "version": "0.1.0-alpha",
+      "aggregates": ["ICommChannel"],
+      "tags": ["comm", "pipeline", "multi-agent"]
+    },
+    {
+      "name": "@openstarry-plugin/comm-proxy",
+      "description": "Communication proxy decorator for message interception and transformation",
+      "version": "0.1.0-alpha",
+      "aggregates": ["ICommChannel"],
+      "tags": ["comm", "proxy", "decorator"]
+    },
+    {
+      "name": "@openstarry-plugin/confirmation-gate-standard",
+      "description": "Standard confirmation gate for destructive operation approval",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IConfirmationGate"],
+      "tags": ["confirmation", "gate", "security"]
+    },
+    {
+      "name": "@openstarry-plugin/context-summary",
+      "description": "LLM-powered context summarization for long conversation management",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IContextManager"],
+      "tags": ["context", "summary", "llm"]
+    },
+    {
+      "name": "@openstarry-plugin/distributed-alaya",
+      "description": "Distributed state synchronization with HMAC authentication",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IDistributedAlaya"],
+      "tags": ["distributed", "state", "hmac", "multi-agent"]
+    },
+    {
+      "name": "@openstarry-plugin/guide-persistent",
+      "description": "Persistent guide with session memory and personality traits",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IGuide"],
+      "tags": ["guide", "persistent", "memory"]
+    },
+    {
+      "name": "@openstarry-plugin/vedana-sensor-core",
+      "description": "Core vedana sensor for three-feeling feedback system (dukkha/sukha/upekkha)",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IVedanaSensor"],
+      "tags": ["vedana", "sensor", "feedback"]
+    },
+    {
+      "name": "@openstarry-plugin/volition-rule-engine",
+      "description": "Rule-based volition engine for deliberation and action planning",
+      "version": "0.19.0",
+      "aggregates": ["IVolition"],
+      "tags": ["volition", "rules", "deliberation"]
     }
   ]
 }

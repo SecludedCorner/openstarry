@@ -29,6 +29,9 @@ export interface ImportAnalysisOptions {
 
   /** List of module names to allow (overrides blockedModules) */
   allowedModules?: string[];
+
+  /** Block computed dynamic imports (default: true in strict mode). */
+  blockComputedImports?: boolean;
 }
 
 interface ImportViolation {
@@ -195,10 +198,20 @@ export async function validatePluginImports(
             });
           }
         } else if (args.length > 0 && args[0].type !== "StringLiteral") {
-          logger.warn("Computed dynamic import detected — cannot validate statically", {
-            file: pluginPath,
-            line: loc?.start.line ?? 0,
-          });
+          const shouldBlock = options.blockComputedImports !== false; // default: true
+          if (shouldBlock) {
+            violations.push({
+              module: "<computed>",
+              line: loc?.start.line ?? 0,
+              column: loc?.start.column ?? 0,
+              importType: "dynamic",
+            });
+          } else {
+            logger.warn("Computed dynamic import detected — cannot validate statically", {
+              file: pluginPath,
+              line: loc?.start.line ?? 0,
+            });
+          }
         }
       }
     }

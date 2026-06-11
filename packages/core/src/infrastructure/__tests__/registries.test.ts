@@ -12,6 +12,7 @@ describe("ToolRegistry", () => {
   it("registers and retrieves a tool by id", () => {
     const registry = createToolRegistry();
     const tool: ITool = {
+      skandha: "samskara" as const,
       id: "test-tool",
       description: "A test tool",
       parameters: z.object({}),
@@ -32,12 +33,14 @@ describe("ToolRegistry", () => {
   it("lists all registered tools", () => {
     const registry = createToolRegistry();
     const tool1: ITool = {
+      skandha: "samskara" as const,
       id: "tool-1",
       description: "Tool 1",
       parameters: z.object({}),
       execute: vi.fn(),
     };
     const tool2: ITool = {
+      skandha: "samskara" as const,
       id: "tool-2",
       description: "Tool 2",
       parameters: z.object({}),
@@ -56,6 +59,7 @@ describe("ToolRegistry", () => {
   it("converts tools to JSON schemas", () => {
     const registry = createToolRegistry();
     const tool: ITool = {
+      skandha: "samskara" as const,
       id: "schema-tool",
       description: "A tool for schema testing",
       parameters: z.object({ name: z.string() }),
@@ -74,12 +78,14 @@ describe("ToolRegistry", () => {
   it("handles multiple tools in toJsonSchemas", () => {
     const registry = createToolRegistry();
     const tool1: ITool = {
+      skandha: "samskara" as const,
       id: "tool-a",
       description: "Tool A",
       parameters: z.object({}),
       execute: vi.fn(),
     };
     const tool2: ITool = {
+      skandha: "samskara" as const,
       id: "tool-b",
       description: "Tool B",
       parameters: z.object({}),
@@ -99,6 +105,7 @@ describe("ProviderRegistry", () => {
   it("registers and retrieves a provider by id", () => {
     const registry = createProviderRegistry();
     const provider: IProvider = {
+      skandha: "samjna" as const,
       id: "test-provider",
       name: "Test Provider",
       models: [],
@@ -119,12 +126,14 @@ describe("ProviderRegistry", () => {
   it("lists all registered providers", () => {
     const registry = createProviderRegistry();
     const provider1: IProvider = {
+      skandha: "samjna" as const,
       id: "provider-1",
       name: "Provider 1",
       models: [],
       chat: vi.fn(),
     };
     const provider2: IProvider = {
+      skandha: "samjna" as const,
       id: "provider-2",
       name: "Provider 2",
       models: [],
@@ -145,6 +154,7 @@ describe("ProviderRegistry", () => {
     const model1: ModelInfo = { id: "model-a", name: "Model A" };
     const model2: ModelInfo = { id: "model-b", name: "Model B" };
     const provider: IProvider = {
+      skandha: "samjna" as const,
       id: "test-provider",
       name: "Test Provider",
       models: [model1, model2],
@@ -162,6 +172,7 @@ describe("ProviderRegistry", () => {
   it("returns undefined when resolving non-existent model", () => {
     const registry = createProviderRegistry();
     const provider: IProvider = {
+      skandha: "samjna" as const,
       id: "test-provider",
       name: "Test Provider",
       models: [{ id: "model-a", name: "Model A" }],
@@ -176,12 +187,14 @@ describe("ProviderRegistry", () => {
   it("resolves model across multiple providers", () => {
     const registry = createProviderRegistry();
     const provider1: IProvider = {
+      skandha: "samjna" as const,
       id: "provider-1",
       name: "Provider 1",
       models: [{ id: "model-1", name: "Model 1" }],
       chat: vi.fn(),
     };
     const provider2: IProvider = {
+      skandha: "samjna" as const,
       id: "provider-2",
       name: "Provider 2",
       models: [{ id: "model-2", name: "Model 2" }],
@@ -201,6 +214,7 @@ describe("ListenerRegistry", () => {
   it("registers and retrieves a listener by id", () => {
     const registry = createListenerRegistry();
     const listener: IListener = {
+      skandha: "rupa" as const,
       id: "test-listener",
       name: "Test Listener",
     };
@@ -219,10 +233,12 @@ describe("ListenerRegistry", () => {
   it("lists all registered listeners", () => {
     const registry = createListenerRegistry();
     const listener1: IListener = {
+      skandha: "rupa" as const,
       id: "listener-1",
       name: "Listener 1",
     };
     const listener2: IListener = {
+      skandha: "rupa" as const,
       id: "listener-2",
       name: "Listener 2",
       start: vi.fn(),
@@ -241,6 +257,7 @@ describe("ListenerRegistry", () => {
   it("handles listeners with optional start/stop methods", () => {
     const registry = createListenerRegistry();
     const listener: IListener = {
+      skandha: "rupa" as const,
       id: "minimal-listener",
       name: "Minimal Listener",
     };
@@ -256,6 +273,7 @@ describe("GuideRegistry", () => {
   it("registers and retrieves a guide by id", () => {
     const registry = createGuideRegistry();
     const guide: IGuide = {
+      skandha: "vijnana" as const,
       id: "test-guide",
       name: "Test Guide",
       getSystemPrompt: () => "Test prompt",
@@ -275,11 +293,13 @@ describe("GuideRegistry", () => {
   it("lists all registered guides", () => {
     const registry = createGuideRegistry();
     const guide1: IGuide = {
+      skandha: "vijnana" as const,
       id: "guide-1",
       name: "Guide 1",
       getSystemPrompt: () => "Prompt 1",
     };
     const guide2: IGuide = {
+      skandha: "vijnana" as const,
       id: "guide-2",
       name: "Guide 2",
       getSystemPrompt: async () => "Prompt 2",
@@ -297,11 +317,13 @@ describe("GuideRegistry", () => {
   it("handles guides with sync and async getSystemPrompt", () => {
     const registry = createGuideRegistry();
     const syncGuide: IGuide = {
+      skandha: "vijnana" as const,
       id: "sync-guide",
       name: "Sync Guide",
       getSystemPrompt: () => "Sync prompt",
     };
     const asyncGuide: IGuide = {
+      skandha: "vijnana" as const,
       id: "async-guide",
       name: "Async Guide",
       getSystemPrompt: async () => "Async prompt",
@@ -312,12 +334,96 @@ describe("GuideRegistry", () => {
     expect(registry.get("sync-guide")).toBe(syncGuide);
     expect(registry.get("async-guide")).toBe(asyncGuide);
   });
+
+  // Cycle 03-31 FIX-B — A1-4 BG-3 HIGH silent overwrite mitigation
+  // SUSSMAN amendment per R3 §5.5: strict-by-default + opt-in allowReplace
+  describe("duplicate-id protection (FIX-B / ZT-1)", () => {
+    it("throws on duplicate guideId in strict (default) mode", () => {
+      const registry = createGuideRegistry();
+      const original: IGuide = {
+        skandha: "vijnana" as const,
+        id: "dup-guide",
+        name: "Original",
+        getSystemPrompt: () => "Original prompt",
+      };
+      const usurper: IGuide = {
+        skandha: "vijnana" as const,
+        id: "dup-guide",
+        name: "Usurper",
+        getSystemPrompt: () => "Usurper prompt",
+      };
+
+      registry.register(original);
+      expect(() => registry.register(usurper)).toThrow(/duplicate guide id "dup-guide"/);
+      // Identity preserved — original NOT replaced
+      expect(registry.get("dup-guide")).toBe(original);
+    });
+
+    it("throws with diagnostic message naming both prior + incoming guide names", () => {
+      const registry = createGuideRegistry();
+      registry.register({
+        skandha: "vijnana" as const,
+        id: "x",
+        name: "PriorName",
+        getSystemPrompt: () => "p1",
+      });
+      expect(() => registry.register({
+        skandha: "vijnana" as const,
+        id: "x",
+        name: "IncomingName",
+        getSystemPrompt: () => "p2",
+      })).toThrow(/PriorName.*IncomingName/);
+    });
+
+    it("throws even when allowReplace is explicitly false", () => {
+      const registry = createGuideRegistry();
+      const a: IGuide = { skandha: "vijnana", id: "y", name: "A", getSystemPrompt: () => "a" };
+      const b: IGuide = { skandha: "vijnana", id: "y", name: "B", getSystemPrompt: () => "b" };
+      registry.register(a);
+      expect(() => registry.register(b, { allowReplace: false })).toThrow();
+    });
+
+    it("permits replacement when allowReplace=true (opt-in)", () => {
+      const registry = createGuideRegistry();
+      const original: IGuide = {
+        skandha: "vijnana" as const,
+        id: "swap",
+        name: "Original",
+        getSystemPrompt: () => "Original",
+      };
+      const replacement: IGuide = {
+        skandha: "vijnana" as const,
+        id: "swap",
+        name: "Replacement",
+        getSystemPrompt: () => "Replacement",
+      };
+
+      registry.register(original);
+      expect(() => registry.register(replacement, { allowReplace: true })).not.toThrow();
+      expect(registry.get("swap")).toBe(replacement);
+      expect(registry.list()).toHaveLength(1);
+    });
+
+    it("first registration of a fresh id is unaffected by options", () => {
+      const registry = createGuideRegistry();
+      const guide: IGuide = {
+        skandha: "vijnana" as const,
+        id: "fresh",
+        name: "Fresh",
+        getSystemPrompt: () => "Fresh prompt",
+      };
+      expect(() => registry.register(guide)).not.toThrow();
+      expect(() => registry.register({ ...guide, id: "fresh-2" }, { allowReplace: true })).not.toThrow();
+      expect(registry.list()).toHaveLength(2);
+    });
+  });
 });
 
 describe("UIRegistry", () => {
   it("registers and retrieves a UI by id", () => {
     const registry = createUIRegistry();
     const ui: IUI = {
+      skandha: "rupa" as const,
       id: "test-ui",
       name: "Test UI",
       onEvent: vi.fn(),
@@ -337,11 +443,13 @@ describe("UIRegistry", () => {
   it("lists all registered UIs", () => {
     const registry = createUIRegistry();
     const ui1: IUI = {
+      skandha: "rupa" as const,
       id: "ui-1",
       name: "UI 1",
       onEvent: vi.fn(),
     };
     const ui2: IUI = {
+      skandha: "rupa" as const,
       id: "ui-2",
       name: "UI 2",
       onEvent: vi.fn(),
@@ -361,6 +469,7 @@ describe("UIRegistry", () => {
   it("handles UIs with optional start/stop methods", () => {
     const registry = createUIRegistry();
     const ui: IUI = {
+      skandha: "rupa" as const,
       id: "minimal-ui",
       name: "Minimal UI",
       onEvent: vi.fn(),

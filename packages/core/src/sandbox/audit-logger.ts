@@ -7,14 +7,15 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { EventBus, AuditLogEntry } from "@openstarry/sdk";
-import { AgentEventType } from "@openstarry/sdk";
+import { AgentEventType, DEFAULT_AUDIT_LOGGER_CONFIG } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("AuditLogger");
 
 const SECRET_PATTERN = /secret|token|password|key|auth|credential/i;
-const MAX_STRING_LENGTH = 200;
-const MAX_SANITIZE_DEPTH = 3;
+// Plan32 Wave 4 (P2): Policy constants sourced from SDK defaults
+const MAX_STRING_LENGTH = DEFAULT_AUDIT_LOGGER_CONFIG.maxStringLength;
+const MAX_SANITIZE_DEPTH = DEFAULT_AUDIT_LOGGER_CONFIG.maxSanitizeDepth;
 
 export interface AuditLoggerOptions {
   /** Plugin name (used in filename) */
@@ -100,10 +101,10 @@ export class AuditLogger {
   constructor(options: AuditLoggerOptions) {
     this.pluginName = options.pluginName;
     this.logDir = options.logDir;
-    this.bufferSize = options.bufferSize ?? 50;
-    this.flushIntervalMs = options.flushIntervalMs ?? 5000;
-    this.maxFileSizeMb = options.maxFileSizeMb ?? 50;
-    this.maxFiles = options.maxFiles ?? 10;
+    this.bufferSize = options.bufferSize ?? DEFAULT_AUDIT_LOGGER_CONFIG.bufferSize;
+    this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_AUDIT_LOGGER_CONFIG.flushIntervalMs;
+    this.maxFileSizeMb = options.maxFileSizeMb ?? DEFAULT_AUDIT_LOGGER_CONFIG.maxFileSizeMb;
+    this.maxFiles = options.maxFiles ?? DEFAULT_AUDIT_LOGGER_CONFIG.maxFiles;
     this.shouldSanitize = options.sanitizeArgs ?? true;
     this.bus = options.bus;
 

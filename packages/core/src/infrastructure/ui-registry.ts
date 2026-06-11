@@ -1,5 +1,6 @@
 /**
- * UIRegistry — manages UI renderers (色蘊).
+ * UIRegistry — manages UI renderers.
+ * @skandha rupa (色蘊 — 顯相·輸出)
  */
 
 import type { IUI } from "@openstarry/sdk";

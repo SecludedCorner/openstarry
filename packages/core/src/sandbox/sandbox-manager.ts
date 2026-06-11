@@ -20,7 +20,8 @@ import type {
   WorkerRestartPolicy,
   SandboxConfig,
 } from "@openstarry/sdk";
-import { AgentEventType, SandboxError } from "@openstarry/sdk";
+import { AgentEventType, SandboxError, DEFAULT_SANDBOX_MANAGER_CONFIG } from "@openstarry/sdk";
+import type { SandboxManagerConfig } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 import { z } from "zod";
 import type {
@@ -29,23 +30,19 @@ import type {
   SerializedPluginHooks,
 } from "./messages.js";
 import { createSignatureVerifier, type SignatureVerifier } from "./signature-verification.js";
-import { attachRpcHandler, type SubscriptionState } from "./rpc-handler.js";
+import { attachRpcHandler, type RpcHandlerDeps, type SubscriptionState } from "./rpc-handler.js";
 import { validatePluginImports } from "./import-analyzer.js";
 import { createWorkerPool, type PluginWorkerPool } from "./worker-pool.js";
 import { AuditLogger } from "./audit-logger.js";
 
 const logger = createLogger("SandboxManager");
 
-const DEFAULT_MEMORY_LIMIT_MB = 512;
-const RPC_TIMEOUT_MS = 30000;
-const DEFAULT_CPU_TIMEOUT_MS = 60000;
-const HEARTBEAT_CHECK_INTERVAL_MS = 45000;
-const DEFAULT_RESTART_POLICY: WorkerRestartPolicy = {
-  maxRestarts: 3,
-  backoffMs: 500,
-  maxBackoffMs: 10000,
-  resetWindowMs: 60000,
-};
+// Plan32 Wave 4 (P2): All policy constants sourced from SDK defaults
+const DEFAULT_MEMORY_LIMIT_MB = DEFAULT_SANDBOX_MANAGER_CONFIG.memoryLimitMb;
+const RPC_TIMEOUT_MS = DEFAULT_SANDBOX_MANAGER_CONFIG.rpcTimeoutMs;
+const DEFAULT_CPU_TIMEOUT_MS = DEFAULT_SANDBOX_MANAGER_CONFIG.cpuTimeoutMs;
+const HEARTBEAT_CHECK_INTERVAL_MS = DEFAULT_SANDBOX_MANAGER_CONFIG.heartbeatCheckIntervalMs;
+const DEFAULT_RESTART_POLICY: WorkerRestartPolicy = DEFAULT_SANDBOX_MANAGER_CONFIG.restartPolicy;
 
 export interface WorkerResourceUsage {
   memoryUsageMb: number;
@@ -361,11 +358,30 @@ export function createPluginSandboxManager(deps: SandboxManagerDeps): PluginSand
 
       logger.info(`Loading plugin in sandbox: ${name}`, { memoryLimitMb, cpuTimeoutMs });
 
+      // Resolve plugin file path early (needed for signature verification and import analysis)
+      const manifestAny = plugin.manifest as unknown as Record<string, unknown>;
+      const pluginFilePath = manifestAny.ref
+        ? (manifestAny.ref as { path?: string })?.path
+        : undefined;
+
       // Step 1: Signature verification (if integrity field present)
-      // Note: ref.path is resolved at config level; PluginManifest doesn't carry it.
-      // When ref.path is available in the load chain, verifier can be called.
-      // For package-name plugins, we log a warning and continue.
-      if (plugin.manifest.integrity) {
+      if (plugin.manifest.integrity && pluginFilePath) {
+        try {
+          await verifier.verifyPlugin(plugin, pluginFilePath);
+          deps.bus.emit({
+            type: AgentEventType.SANDBOX_SIGNATURE_VERIFIED,
+            timestamp: Date.now(),
+            payload: { pluginName: name },
+          });
+        } catch (err) {
+          deps.bus.emit({
+            type: AgentEventType.SANDBOX_SIGNATURE_FAILED,
+            timestamp: Date.now(),
+            payload: { pluginName: name, error: err instanceof Error ? err.message : String(err) },
+          });
+          throw err;
+        }
+      } else if (plugin.manifest.integrity && !pluginFilePath) {
         logger.warn("Signature verification skipped for package-name plugin (no file path)", {
           plugin: name,
           integrity: typeof plugin.manifest.integrity === "string"
@@ -375,12 +391,6 @@ export function createPluginSandboxManager(deps: SandboxManagerDeps): PluginSand
       }
 
       // Step 1.5: Static import analysis (if file path available)
-      // Package-name plugins don't have ref.path, so import analysis is skipped.
-      // When ref.path is available in the plugin loading chain, this validates imports.
-      const manifestAny = plugin.manifest as unknown as Record<string, unknown>;
-      const pluginFilePath = manifestAny.ref
-        ? (manifestAny.ref as { path?: string })?.path
-        : undefined;
 
       if (pluginFilePath) {
         try {
@@ -460,8 +470,27 @@ export function createPluginSandboxManager(deps: SandboxManagerDeps): PluginSand
       };
 
       // Attach RPC handler for worker→main messages (bus, pushInput, sessions, subscriptions, etc.)
+      // Apply per-plugin provider capability filtering (SEC-025-002)
+      const allowedProviderIds = plugin.manifest.capabilities?.allowedProviders;
+      const shouldFilterProviders = allowedProviderIds && allowedProviderIds.length > 0;
+      const rpcDeps: RpcHandlerDeps = {
+        bus: deps.bus,
+        pushInput: deps.pushInput,
+        sessions: deps.sessions,
+        tools: deps.tools,
+        guides: deps.guides,
+        providers: shouldFilterProviders
+          ? {
+              list: () => deps.providers.list().filter(p => allowedProviderIds.includes(p.id)),
+              get: (id: string) => {
+                if (!allowedProviderIds.includes(id)) return undefined;
+                return deps.providers.get(id);
+              },
+            }
+          : deps.providers,
+      };
       const subscriptionState: SubscriptionState = { subscriptions: state.subscriptions };
-      state.rpcCleanup = attachRpcHandler(worker, name, deps, subscriptionState, auditLogger);
+      state.rpcCleanup = attachRpcHandler(worker, name, rpcDeps, subscriptionState, auditLogger);
 
       // Step 3: Setup heartbeat monitoring
       setupHeartbeatMonitor(state, name);
@@ -635,7 +664,7 @@ export function createPluginSandboxManager(deps: SandboxManagerDeps): PluginSand
             new Promise<void>((resolve) => {
               state.worker.once("exit", () => resolve());
             }),
-            new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+            new Promise<void>((resolve) => setTimeout(resolve, DEFAULT_SANDBOX_MANAGER_CONFIG.shutdownTimeoutMs)),
           ]);
         } catch {
           // Force terminate
@@ -741,6 +770,7 @@ function createProxyTool(
   manager: PluginSandboxManager,
 ): ITool {
   return {
+    skandha: "samskara" as const,
     id: meta.id,
     description: meta.description,
     // Accept any input — the worker will validate with its own Zod schema

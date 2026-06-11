@@ -1,5 +1,6 @@
 /**
  * ProviderRegistry — manages LLM provider adapters.
+ * @skandha samjna (想蘊 — 認知處理)
  */
 
 import type { IProvider, ModelInfo } from "@openstarry/sdk";

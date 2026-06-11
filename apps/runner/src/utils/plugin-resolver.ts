@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import type { IAgentConfig, IPlugin } from "@openstarry/sdk";
 import type { SystemConfig } from "../bootstrap.js";
 import { SYSTEM_CONFIG_PATH } from "../bootstrap.js";
+import { isPathSafe } from "./permission-validator.js";
 
 export interface PluginResolutionError {
   pluginName: string;
@@ -35,17 +36,25 @@ const systemPluginCache = new Map<string, string | null>();
  *   2. Otherwise → dynamic import by package name
  *
  * Errors are accumulated (don't fail on first error).
+ *
+ * @param config - Agent configuration with plugin list.
+ * @param verbose - Log each loaded plugin name.
+ * @param projectRoot - Optional project root for plugin path safety checks (Plan34 Wave 2).
+ *   When provided and a PluginRef contains a path field, isPathSafe(projectRoot, ref.path)
+ *   must pass before the path is resolved. If isPathSafe fails, the plugin is treated
+ *   as a load error (accumulated, not fatal).
  */
 export async function resolvePlugins(
   config: IAgentConfig,
-  verbose = false
+  verbose = false,
+  projectRoot?: string | null,
 ): Promise<PluginResolutionResult> {
   const plugins: IPlugin[] = [];
   const errors: PluginResolutionError[] = [];
 
   for (const ref of config.plugins) {
     try {
-      const plugin = await resolvePlugin(ref);
+      const plugin = await resolvePlugin(ref, projectRoot ?? null);
       plugins.push(plugin);
       if (verbose) {
         console.log(`[plugin] Loaded: ${ref.name}`);
@@ -72,17 +81,25 @@ export async function resolvePlugins(
  * 2. Package name (workspace / node_modules — preferred)
  * 3. System directory (fallback for standalone daemon)
  */
-async function resolvePlugin(ref: { name: string; path?: string }): Promise<IPlugin> {
+async function resolvePlugin(ref: { name: string; path?: string; config?: Record<string, unknown> }, projectRoot: string | null): Promise<IPlugin> {
   // Strategy 1: Explicit path
   if (ref.path) {
-    const absolutePath = resolve(ref.path);
+    // Plan34 Wave 2: validate path is within project root when projectRoot is provided
+    // SEC-001 fix: resolve path against projectRoot (not CWD) to ensure the path
+    // that passes isPathSafe() is the same path that gets loaded via import().
+    const absolutePath = projectRoot !== null ? resolve(projectRoot, ref.path) : resolve(ref.path);
+    if (projectRoot !== null) {
+      if (!isPathSafe(projectRoot, absolutePath)) {
+        throw new Error(`Plugin path '${ref.path}' is not within project root '${projectRoot}'`);
+      }
+    }
     const fileUrl = pathToFileURL(absolutePath).href;
     const mod = await import(fileUrl) as Record<string, unknown>;
     const factory = (mod.default ?? mod.createPlugin ?? findFactory(mod)) as
       | ((opts?: unknown) => IPlugin)
       | undefined;
     if (typeof factory === "function") {
-      const plugin = factory();
+      const plugin = factory(ref.config);
       (plugin as unknown as Record<string, unknown>)._resolvedModulePath = fileUrl;
       return plugin;
     }
@@ -96,7 +113,7 @@ async function resolvePlugin(ref: { name: string; path?: string }): Promise<IPlu
       | ((opts?: unknown) => IPlugin)
       | undefined;
     if (typeof factory === "function") {
-      const plugin = factory();
+      const plugin = factory(ref.config);
       // Resolve the absolute file path so sandbox workers can import it directly
       try {
         // import.meta.resolve uses same ESM algorithm as import() — most reliable
@@ -128,7 +145,7 @@ async function resolvePlugin(ref: { name: string; path?: string }): Promise<IPlu
         | ((opts?: unknown) => IPlugin)
         | undefined;
       if (typeof factory === "function") {
-        const plugin = factory();
+        const plugin = factory(ref.config);
         (plugin as unknown as Record<string, unknown>)._resolvedModulePath = fileUrl;
         return plugin;
       }

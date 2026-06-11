@@ -1,6 +1,6 @@
 {
   "name": "openstarry",
-  "version": "0.22.1-beta",
+  "version": "0.57.10-alpha",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,8 @@
     "dev": "pnpm -r run dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:purity": "bash scripts/check-purity.sh"
+    "test:purity": "bash scripts/check-purity.sh",
+    "test:flake-gate": "bash scripts/flake-gate.sh"
   },
   "engines": {
     "node": ">=20.0.0"

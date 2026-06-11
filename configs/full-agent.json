@@ -24,6 +24,7 @@
     "slidingWindowSize": 10
   },
   "plugins": [
+    { "name": "@openstarry-plugin/context-sliding-window" },
     { "name": "@openstarry-plugin/provider-gemini-oauth" },
     { "name": "@openstarry-plugin/provider-gemini" },
     { "name": "@openstarry-plugin/provider-claude" },

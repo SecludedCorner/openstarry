@@ -335,9 +335,144 @@ describe("RPC Handler", () => {
     });
   });
 
+  describe("EventBus RPC Whitelist", () => {
+    const blockedPrefixes = [
+      "agent:started",
+      "agent:stopped",
+      "loop:iteration",
+      "session:created",
+      "safety:lockout",
+      "sandbox:crashed",
+      "state:changed",
+      "metrics:collected",
+    ];
+
+    for (const eventType of blockedPrefixes) {
+      it(`blocks sandbox from emitting '${eventType}'`, () => {
+        const { worker, emitter } = createMockWorker();
+        attachRpcHandler(worker, "test-plugin", deps);
+
+        emitter.emit("message", {
+          type: "BUS_EMIT",
+          payload: {
+            event: { type: eventType, timestamp: Date.now(), payload: {} },
+          },
+        });
+
+        expect(deps.bus.emit).not.toHaveBeenCalled();
+      });
+    }
+
+    const allowedEvents = [
+      "plugin:custom",
+      "custom:event",
+      "provider:login",
+      "tool:result",
+      "ui:render",
+    ];
+
+    for (const eventType of allowedEvents) {
+      it(`allows sandbox to emit '${eventType}'`, () => {
+        const { worker, emitter } = createMockWorker();
+        attachRpcHandler(worker, "test-plugin", deps);
+
+        emitter.emit("message", {
+          type: "BUS_EMIT",
+          payload: {
+            event: { type: eventType, timestamp: 1234567890, payload: { data: "ok" } },
+          },
+        });
+
+        expect(deps.bus.emit).toHaveBeenCalledWith({
+          type: eventType,
+          timestamp: 1234567890,
+          payload: { data: "ok" },
+        });
+      });
+    }
+  });
+
+  describe("EventBus RPC Rate Limiting", () => {
+    it("blocks events after exceeding rate limit", () => {
+      const { worker, emitter } = createMockWorker();
+      // Use a unique plugin name to avoid interference from other tests
+      attachRpcHandler(worker, "rate-limit-test-plugin", deps);
+
+      const limit = 100;
+
+      // Emit exactly `limit` events — all should pass
+      for (let i = 0; i < limit; i++) {
+        emitter.emit("message", {
+          type: "BUS_EMIT",
+          payload: {
+            event: { type: "plugin:event", timestamp: Date.now(), payload: { i } },
+          },
+        });
+      }
+      expect(deps.bus.emit).toHaveBeenCalledTimes(limit);
+
+      // The 101st event should be rate-limited
+      emitter.emit("message", {
+        type: "BUS_EMIT",
+        payload: {
+          event: { type: "plugin:event", timestamp: Date.now(), payload: {} },
+        },
+      });
+      expect(deps.bus.emit).toHaveBeenCalledTimes(limit); // Still 100, not 101
+    });
+
+    it("resets rate limit after time window passes", () => {
+      const { worker, emitter } = createMockWorker();
+      const uniqueName = "rate-limit-reset-plugin";
+      attachRpcHandler(worker, uniqueName, deps);
+
+      // Use fake timers to control Date.now()
+      const originalDateNow = Date.now;
+      let fakeNow = 1000000;
+      Date.now = () => fakeNow;
+
+      try {
+        // Emit 100 events
+        for (let i = 0; i < 100; i++) {
+          emitter.emit("message", {
+            type: "BUS_EMIT",
+            payload: {
+              event: { type: "plugin:event", timestamp: fakeNow, payload: {} },
+            },
+          });
+        }
+        expect(deps.bus.emit).toHaveBeenCalledTimes(100);
+
+        // 101st is blocked
+        emitter.emit("message", {
+          type: "BUS_EMIT",
+          payload: {
+            event: { type: "plugin:event", timestamp: fakeNow, payload: {} },
+          },
+        });
+        expect(deps.bus.emit).toHaveBeenCalledTimes(100);
+
+        // Advance time by 1 second (past the reset window)
+        fakeNow += 1000;
+
+        // Now it should work again
+        emitter.emit("message", {
+          type: "BUS_EMIT",
+          payload: {
+            event: { type: "plugin:event", timestamp: fakeNow, payload: {} },
+          },
+        });
+        expect(deps.bus.emit).toHaveBeenCalledTimes(101);
+      } finally {
+        Date.now = originalDateNow;
+      }
+    });
+  });
+
   describe("Provider RPC Handlers", () => {
     it("handles PROVIDERS_LIST_REQUEST with registered providers", () => {
       const mockProvider: IProvider = {
+        skandha: "samjna" as const,
         id: "test-provider",
         name: "Test Provider",
         models: [{ id: "test-model", name: "Test Model", contextWindow: 4096 }],
@@ -388,6 +523,7 @@ describe("RPC Handler", () => {
 
     it("handles PROVIDERS_GET_REQUEST for existing provider", () => {
       const mockProvider: IProvider = {
+        skandha: "samjna" as const,
         id: "test-provider",
         name: "Test Provider",
         models: [{ id: "test-model", name: "Test Model", contextWindow: 8192 }],
@@ -438,6 +574,7 @@ describe("RPC Handler", () => {
 
     it("PROVIDERS_LIST_RESPONSE excludes chat() method", () => {
       const mockProvider: IProvider = {
+        skandha: "samjna" as const,
         id: "test",
         name: "Test",
         models: [],
@@ -459,6 +596,68 @@ describe("RPC Handler", () => {
       expect(response.type).toBe("PROVIDERS_LIST_RESPONSE");
       const payload = response.payload as { providers: Array<{ chat?: unknown }> };
       expect(payload.providers[0].chat).toBeUndefined();
+    });
+
+    it("filters providers when deps apply allowedProviders capability", () => {
+      const providerA: IProvider = {
+        skandha: "samjna" as const,
+        id: "provider-a",
+        name: "Provider A",
+        models: [{ id: "model-a", name: "Model A", contextWindow: 4096 }],
+        chat: async function* () { yield { type: "text", text: "a" }; },
+      };
+      const providerB: IProvider = {
+        skandha: "samjna" as const,
+        id: "provider-b",
+        name: "Provider B",
+        models: [{ id: "model-b", name: "Model B", contextWindow: 4096 }],
+        chat: async function* () { yield { type: "text", text: "b" }; },
+      };
+
+      // Simulate filtered deps (only provider-a allowed)
+      const filteredDeps = createMockDeps();
+      filteredDeps.providers = {
+        list: () => [providerA], // pre-filtered to only include allowed
+        get: (id: string) => (id === "provider-a" ? providerA : undefined),
+      };
+
+      const { worker, emitter, postedMessages } = createMockWorker();
+      attachRpcHandler(worker, "test-plugin", filteredDeps);
+
+      emitter.emit("message", {
+        type: "PROVIDERS_LIST_REQUEST",
+        id: "req-filter-1",
+      });
+
+      expect(postedMessages).toHaveLength(1);
+      const response = postedMessages[0] as Record<string, unknown>;
+      const payload = response.payload as { providers: Array<{ id: string }> };
+      expect(payload.providers).toHaveLength(1);
+      expect(payload.providers[0].id).toBe("provider-a");
+    });
+
+    it("returns null for blocked provider via allowedProviders filtering", () => {
+      // Simulate filtered deps that block provider-b
+      const filteredDeps = createMockDeps();
+      filteredDeps.providers = {
+        list: () => [],
+        get: () => undefined, // all providers blocked
+      };
+
+      const { worker, emitter, postedMessages } = createMockWorker();
+      attachRpcHandler(worker, "test-plugin", filteredDeps);
+
+      emitter.emit("message", {
+        type: "PROVIDERS_GET_REQUEST",
+        id: "req-filter-2",
+        payload: { providerId: "provider-b" },
+      });
+
+      expect(postedMessages).toHaveLength(1);
+      const response = postedMessages[0] as Record<string, unknown>;
+      expect(response.type).toBe("PROVIDERS_GET_RESPONSE");
+      const payload = response.payload as { provider: null };
+      expect(payload.provider).toBeNull();
     });
   });
 });

@@ -10,6 +10,18 @@ import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("SignatureVerifier");
 
+/** Detached SIGNATURE.json format (Plan36b). */
+export interface DetachedSignature {
+  readonly version: 1;
+  readonly algorithm: 'ed25519-sha256' | 'rsa-sha256';
+  readonly manifestSignature: string;
+  readonly entryPointHash: string;
+  readonly fileHashes: Readonly<Record<string, string>>;
+  readonly publicKey: string;
+  readonly signer?: string;
+  readonly timestamp: number;
+}
+
 export interface SignatureVerifier {
   /** Verify plugin with legacy hash OR PKI signature */
   verifyPlugin(plugin: IPlugin, pluginCodePath: string): Promise<void>;
@@ -17,6 +29,10 @@ export interface SignatureVerifier {
   computeHash(filePath: string): Promise<string>;
   /** Verify PKI signature (new) */
   verifyPkiSignature(filePath: string, integrity: PkiIntegrity): Promise<boolean>;
+  /** Compute SHA-256 hash (Plan36b) */
+  computeSha256(filePath: string): Promise<string>;
+  /** Verify detached SIGNATURE.json (Plan36b) */
+  verifyDetachedSignature(pluginDir: string, signature: DetachedSignature): Promise<void>;
 }
 
 /**
@@ -91,6 +107,62 @@ export function createSignatureVerifier(): SignatureVerifier {
     async computeHash(filePath: string): Promise<string> {
       const content = await readFile(filePath);
       return createHash("sha512").update(content).digest("hex");
+    },
+
+    async computeSha256(filePath: string): Promise<string> {
+      const content = await readFile(filePath);
+      return createHash("sha256").update(content).digest("hex");
+    },
+
+    async verifyDetachedSignature(pluginDir: string, signature: DetachedSignature): Promise<void> {
+      // Fast-fail: verify entry point hash first (GUARDIAN)
+      const entryPointPath = `${pluginDir}/dist/index.js`;
+      try {
+        const entryHash = await this.computeSha256(entryPointPath);
+        if (entryHash !== signature.entryPointHash) {
+          throw new SandboxError(
+            pluginDir,
+            `Entry point hash mismatch. Expected: ${signature.entryPointHash.slice(0, 16)}..., Got: ${entryHash.slice(0, 16)}...`,
+            { code: "SIGNATURE_VERIFICATION_FAILED" },
+          );
+        }
+      } catch (err) {
+        if (err instanceof SandboxError) throw err;
+        throw new SandboxError(
+          pluginDir,
+          `Cannot read entry point for hash verification: ${(err as Error).message}`,
+          { code: "SIGNATURE_VERIFICATION_FAILED" },
+        );
+      }
+
+      // Verify all file hashes
+      for (const [relPath, expectedHash] of Object.entries(signature.fileHashes)) {
+        const fullPath = `${pluginDir}/${relPath}`;
+        try {
+          const actualHash = await this.computeSha256(fullPath);
+          if (actualHash !== expectedHash) {
+            throw new SandboxError(
+              pluginDir,
+              `File hash mismatch for ${relPath}. Expected: ${expectedHash.slice(0, 16)}..., Got: ${actualHash.slice(0, 16)}...`,
+              { code: "SIGNATURE_VERIFICATION_FAILED" },
+            );
+          }
+        } catch (err) {
+          if (err instanceof SandboxError) throw err;
+          throw new SandboxError(
+            pluginDir,
+            `Cannot verify file hash for ${relPath}: ${(err as Error).message}`,
+            { code: "SIGNATURE_VERIFICATION_FAILED" },
+          );
+        }
+      }
+
+      logger.info("Detached SIGNATURE.json verified", {
+        pluginDir,
+        algorithm: signature.algorithm,
+        signer: signature.signer,
+        fileCount: Object.keys(signature.fileHashes).length,
+      });
     },
 
     async verifyPkiSignature(filePath: string, integrity: PkiIntegrity): Promise<boolean> {

@@ -313,3 +313,133 @@ export interface ClientInfo {
 export interface ListClientsResult {
   clients: ClientInfo[];
 }
+
+// -----------------------------------------------------------------------
+// Plan37 C8: Process Tree types
+// FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+// -----------------------------------------------------------------------
+
+/**
+ * Configuration for spawning a child agent.
+ * A subset of DaemonSpawnOptions — parentId is supplied separately as a
+ * parameter to spawnChildAgent(), not embedded in config.
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export interface ChildAgentSpawnConfig {
+  agentId: string;
+  configPath: string;
+  statePath: string;
+  env?: Record<string, string>;
+}
+
+/**
+ * Agent lifecycle states including graceful shutdown states.
+ *
+ * Graceful shutdown protocol (Rule #35):
+ *   RUNNING -> (terminate signal) -> DRAINING
+ *   -> grace_period expires OR all in-flight complete -> TERMINATED
+ *   DRAINING agent MUST NOT spawn new child agents (drain evasion prevention).
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export type AgentLifecycleStatus =
+  | 'running'
+  | 'draining'
+  | 'terminated'
+  | 'stopped'
+  | 'unknown';
+
+/**
+ * Registry entry for a running agent, extended with process tree fields.
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export interface AgentRegistryEntry {
+  agentId: string;
+  pid: number;
+  status: AgentLifecycleStatus;
+  configPath: string;
+  socketPath: string;
+  logFile: string;
+  uptime: number;
+  /**
+   * Parent agent ID.
+   * undefined = root agent (spawned directly, not via spawnChildAgent).
+   * BABBAGE BCT: existing registry entries without this field are root agents.
+   */
+  parentAgentId?: string;
+  /** IDs of all direct child agents (empty array if none). */
+  childAgentIds: string[];
+}
+
+/**
+ * A node in the process tree returned by getProcessTree().
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export interface ProcessTreeNode {
+  entry: AgentRegistryEntry;
+  /** Recursive child nodes. Maximum depth: 3 (Rule #38). */
+  children: ProcessTreeNode[];
+}
+
+/**
+ * Error thrown when spawnChildAgent() is denied by the permission lattice
+ * or because the parent is in DRAINING state.
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export interface SpawnDeniedError {
+  code: 'SPAWN_DENIED';
+  reason: 'DRAINING' | 'PATH_VIOLATION' | 'BUDGET_EXCEEDED' | 'CEILING_EXCEEDED' | 'CAPABILITY_VIOLATION';
+  parentId: string;
+  detail?: string;
+}
+
+/**
+ * RPC error codes extended with Plan37 C8 codes.
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ */
+export const Plan37RPCErrorCode = {
+  SPAWN_DENIED: -32010,
+  AGENT_NOT_FOUND_FOR_TREE: -32011,
+  PARENT_DRAINING: -32012,
+  PERMISSION_LATTICE_VIOLATION: -32013,
+} as const;
+
+/**
+ * Daemon control plane interface.
+ *
+ * Consolidates all RPC-accessible daemon operations into a single typed contract.
+ * The IPC server's onRequest handler delegates to an implementation of this interface.
+ *
+ * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
+ * Classification: Mechanism — non-bypassable typed contract for daemon RPC.
+ */
+export interface IDaemonControlPlane {
+  // Existing methods (consolidated from daemon-entry.ts onRequest handler)
+  ping(): Promise<{ pong: true }>;
+  getAgentStatus(): Promise<AgentStatus>;
+  stopAgent(): Promise<{ success: true }>;
+  getDaemonHealth(): Promise<{ uptime: number; version: string }>;
+  attachSession(
+    options: AttachOptions | undefined,
+    socket: import('node:net').Socket
+  ): Promise<AttachResult>;
+  pushAgentInput(msg: InputMessage): Promise<{ success: true }>;
+  detachSession(
+    msg: DetachMessage,
+    socket: import('node:net').Socket
+  ): Promise<{ success: true }>;
+  listClients(): Promise<ListClientsResult>;
+
+  // New methods — Plan37 C8: Process Tree
+  spawnChildAgent(
+    parentId: string,
+    childConfig: ChildAgentSpawnConfig
+  ): Promise<DaemonSpawnResult>;
+  getProcessTree(): Promise<ProcessTreeNode[]>;
+  getChildAgents(parentId: string): Promise<AgentRegistryEntry[]>;
+}
