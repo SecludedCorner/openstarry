@@ -169,36 +169,17 @@ export {
   parseTokenSig,
 } from "./utils/pushinput-helpers.js";
 
-// Plan54 AC-9 Sub-Agent Composition (cycle 03-16 BINDING; cycle 03-17 implementation)
-export type {
-  LifecycleState,
-  LifecycleHookEvent,
-  LifecycleEvent,
-  LifecycleHandler,
-  SpawnChildRequest,
-  SpawnChildResponse,
-} from "./types/agent-composition.js";
-export {
-  LIFECYCLE_STATES,
-  LIFECYCLE_HOOK_EVENTS,
-  LifecycleStateSchema,
-  SpawnChildRequestSchema,
-  SpawnChildResponseSchema,
-} from "./types/agent-composition.js";
-
-// Plan56 D-30-4 Multi-IVolition (cycle 03-18 BINDING)
-export type {
-  VolitionCategory,
-  VolitionRequest,
-  VolitionEmitResult,
-  CognitiveMomentContext,
-} from "./types/multi-ivolition.js";
-export {
-  VOLITION_CATEGORIES,
-  VolitionCategorySchema,
-  VolitionRequestSchema,
-  VolitionEmitResultSchema,
-} from "./types/multi-ivolition.js";
+// REMOVED 2026-06-11 repair audit (v0.58.0-alpha):
+//   - Plan54 AC-9 agent-composition types (705 LOC runner module + SDK types)
+//   - Plan56 D-30-4 multi-ivolition types (442 LOC runner module + SDK types)
+// Both libraries were delivered with tests but never wired into any production
+// path (zero imports from bootstrap/daemon/commands/core), and agent-composition
+// carried a MAX_SPAWN_DEPTH=4 regime conflicting with the live daemon's
+// COMPOSITE_AGENT_MAX_DEPTH=3. Per the "working or honestly marked" criterion,
+// the dead libraries were amputated; the live daemon spawn system
+// (apps/runner/src/daemon, Plan37/38) is the single composition implementation.
+// Design specs retained as future-work references:
+//   Technical_Specifications/Plan54_AC9_Binding.md / Plan56_D30_4_Binding.md
 
 // Cycle 03-19 γ retrofit canonical redaction helpers
 export {
