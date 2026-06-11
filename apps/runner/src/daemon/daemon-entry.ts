@@ -18,8 +18,8 @@ import { pathToFileURL } from "node:url";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Socket } from "node:net";
-import type { IAgentConfig, InputEvent, ISeed } from "@openstarry/sdk";
-import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS } from "@openstarry/sdk";
+import type { IAgentConfig, InputEvent } from "@openstarry/sdk";
+import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS } from "@openstarry/sdk";
 import { createAgentCore, isPathSafe } from "@openstarry/core";
 import { parseArgs } from "../utils/args.js";
 import { validateConfig } from "../utils/config-validator.js";
@@ -143,24 +143,6 @@ async function main(): Promise<void> {
     const core = createAgentCore(config);
     console.error(`[daemon] Agent core created`);
 
-    // 3.5 Cluster-wide HMAC key (Plan40 W3-C, HMAC Option A) — TENET-2026-06-11:
-    // read MOVED BEFORE plugin loading so the key can be injected into the
-    // distributed-alaya plugin ref. Until this change, DaemonKeyProvider's
-    // "Daemon-distributed cluster-wide key" was in-name-only: the daemon
-    // generated/forwarded the key to child daemons but never injected it into
-    // the plugin, so two processes never shared a key unless hand-written
-    // into config files. Env is deleted immediately after read, BEFORE any
-    // plugin factory runs (SEC: plugins never see the raw env; HMAC-F1).
-    // SECURITY: never log this value — not even at debug level.
-    const hmacKeyHex = process.env['OPENSTARRY_HMAC_KEY'] ?? randomBytes(32).toString('hex');
-    delete process.env['OPENSTARRY_HMAC_KEY'];
-    for (const ref of config.plugins) {
-      if (ref.name === '@openstarry-plugin/distributed-alaya') {
-        // Injected defaults; explicit config-file values win.
-        ref.config = { agentId, hmacKeyHex, ...(ref.config ?? {}) };
-      }
-    }
-
     // 4. Load plugins
     const pluginResult = await resolvePlugins(config, false, null);
     for (const plugin of pluginResult.plugins) {
@@ -182,7 +164,11 @@ async function main(): Promise<void> {
     console.error(`[daemon] Session persistence initialized`);
 
     // 7. Setup signal handlers BEFORE starting anything
-    // (hmacKeyHex now read at step 3.5, before plugin loading — TENET-2026-06-11)
+    // Generate cluster-wide HMAC key (Plan40 W3-C, HMAC Option A).
+    // 256 bits of cryptographic randomness from Node.js CSPRNG.
+    // SECURITY: never log this value — not even at debug level.
+    const hmacKeyHex = process.env['OPENSTARRY_HMAC_KEY'] ?? randomBytes(32).toString('hex');
+    delete process.env['OPENSTARRY_HMAC_KEY'];  // SEC: clear after read (HMAC-F1, Plan41 W0, D5-Q6)
     const startTime = Date.now();
     ctx = {
       agentId,
@@ -331,93 +317,12 @@ async function handleRPCRequest(req: RPCRequest, socket: Socket): Promise<unknow
       return { success: true };
     }
 
-    // ─── TENET-2026-06-11: alaya cross-process surface (宣言 #6) ───
-    // alaya.acceptSeed is the RECEIVER side of cross-process seed
-    // propagation: a peer daemon's IpcRemotePeer delivers a signed seed
-    // here; DistributedAlayaImpl.acceptRemote() independently verifies the
-    // HMAC with THIS process's cluster-key copy before the store is touched.
-    // plant/propagate/query form the control plane so operators and e2e
-    // tests can drive the alaya without an LLM turn. All fail-closed when
-    // the plugin is absent.
-
-    case "alaya.acceptSeed": {
-      const raw = JSON.stringify(req.params ?? {});
-      if (raw.length > 100_000) {
-        throw { code: RPCErrorCode.INVALID_PARAMS, message: "alaya.acceptSeed: payload exceeds 100KB" };
-      }
-      const p = req.params as { seed: ISeed; vectorClock: Record<string, number>; fromAgentId?: string };
-      if (!p || typeof p.seed !== "object" || p.seed === null || typeof p.vectorClock !== "object" || p.vectorClock === null) {
-        throw { code: RPCErrorCode.INVALID_PARAMS, message: "alaya.acceptSeed: seed and vectorClock are required" };
-      }
-      const alaya = getAlayaService();
-      await alaya.acceptRemote(p.seed, p.vectorClock);
-      return { accepted: true, seedId: p.seed.seedId };
-    }
-
-    case "alaya.plant": {
-      const p = req.params as { seed: ISeed };
-      if (!p || typeof p.seed !== "object" || p.seed === null) {
-        throw { code: RPCErrorCode.INVALID_PARAMS, message: "alaya.plant: seed is required" };
-      }
-      const alaya = getAlayaService();
-      await alaya.plant(p.seed);
-      return { planted: true, seedId: p.seed.seedId };
-    }
-
-    case "alaya.propagate": {
-      const p = req.params as { seedId: string; targets: string[] };
-      if (!p || typeof p.seedId !== "string" || !Array.isArray(p.targets)) {
-        throw { code: RPCErrorCode.INVALID_PARAMS, message: "alaya.propagate: seedId and targets[] are required" };
-      }
-      const alaya = getAlayaService();
-      await alaya.propagate(p.seedId, p.targets);
-      return { propagated: true };
-    }
-
-    case "alaya.query": {
-      const p = (req.params ?? {}) as { filter?: Record<string, unknown> };
-      const alaya = getAlayaService();
-      const seeds = await alaya.query(p.filter ?? {});
-      return { seeds };
-    }
-
     default:
       throw {
         code: RPCErrorCode.METHOD_NOT_FOUND,
         message: `Unknown method: ${req.method}`,
       };
   }
-}
-
-/**
- * Resolve the distributed-alaya runtime from the core service registry
- * (TENET-2026-06-11). The registered service is a wrapper exposing
- * getDistributedAlaya() (plugin index.ts) — NOT the IDistributedAlaya the
- * ServiceKey type claims (pre-existing type lie, handled structurally).
- * acceptRemote/plant/propagate/query are duck-typed because the daemon must
- * not import plugin implementation classes (layering). Fail-closed when the
- * plugin is absent.
- */
-function getAlayaService(): {
-  acceptRemote(seed: ISeed, vectorClock: Record<string, number>): Promise<void>;
-  plant(seed: ISeed): Promise<void>;
-  propagate(seedId: string, targets: string[]): Promise<void>;
-  query(filter: Record<string, unknown>): Promise<ISeed[]>;
-} {
-  if (!ctx) {
-    throw new Error("Daemon context not initialized");
-  }
-  const wrapper = ctx.core.serviceRegistry.get(SERVICE_KEYS.DISTRIBUTED_ALAYA) as
-    | { getDistributedAlaya?: () => unknown }
-    | undefined;
-  const alaya = wrapper?.getDistributedAlaya?.();
-  if (!alaya || typeof (alaya as { acceptRemote?: unknown }).acceptRemote !== "function") {
-    throw {
-      code: RPCErrorCode.INVALID_PARAMS,
-      message: "alaya.*: @openstarry-plugin/distributed-alaya is not loaded on this agent (fail-closed)",
-    };
-  }
-  return alaya as ReturnType<typeof getAlayaService>;
 }
 
 /**

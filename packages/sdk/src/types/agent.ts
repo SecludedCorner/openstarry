@@ -4,7 +4,7 @@
 
 import type { ManoAggregatorConfig } from "./gear-arbiter.js";
 import type { SafetyMonitorConfig } from "./safety.js";
-import type { VitakkaWatchdogConfig, KleshaFilterConfig, KleshaModulationConfig } from "./klesha.js";
+import type { VitakkaWatchdogConfig, KleshaFilterConfig } from "./klesha.js";
 import type { VedanaEmergencyConfig } from "./vedana.js";
 import type { ExecutionConfig } from "./execution.js";
 import type { SandboxManagerConfig } from "./sandbox-defaults.js";
@@ -173,26 +173,6 @@ export interface IAgentConfig {
   execution?: Partial<ExecutionConfig>;
   /** Klesha filter parameter overrides. */
   kleshaFilter?: Partial<KleshaFilterConfig>;
-
-  /**
-   * Klesha gain-scheduled threshold modulation (Doc 37) — TENET-2026-06-11.
-   *
-   * OPT-IN by presence: when this block exists (even `{}`), agent-core
-   * constructs KleshaModulatedDispatcher and wires θ(t) into gear
-   * arbitration via createManoAggregator's baseThresholdFn slot; when
-   * absent, routing uses the static mano baseThreshold (pre-v0.59 behavior,
-   * byte-for-byte).
-   *
-   * Resolution precedence: explicit fields here win; unset bounds inherit
-   * the RESOLVED mano values (baseThreshold/thresholdFloor/thresholdCeiling)
-   * so the two configs cannot silently diverge; weights default to
-   * DEFAULT_KLESHA_MODULATION_CONFIG.
-   *
-   * Note: Sneha's documented floor (0.10) means an enabled-but-idle agent
-   * runs at θ ≈ base − 0.015, not exactly base — attachment never reaches
-   * zero by design (Doc 37). This is why the feature is opt-in.
-   */
-  kleshaModulation?: Partial<KleshaModulationConfig>;
 
   // Plan32 Wave 4 (P2): Sandbox configuration override
   /** Sandbox manager configuration override. */

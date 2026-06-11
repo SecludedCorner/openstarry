@@ -12,7 +12,6 @@ All configuration files are placed in this directory for easy management.
 | `tui-agent.json` | Terminal dashboard agent | stdio, fs, guide, tui-dashboard | Rich terminal UI with layout panels |
 | `mcp-agent.json` | MCP-enabled agent | stdio, fs, guide, mcp-server | Expose tools via Model Context Protocol |
 | `full-agent.json` | All features enabled | stdio, fs, skill, guide, websocket, web-ui, devtools | Development and demo |
-| `phase6-agent.json` | Phase 6 plugin demo (added 2026-06-11) | basic set + vasana-engine, mesh, api-runtime, provider-claude-cli | Provable activation path for the Phase 6 plugin-form deliveries; zero-API-key via claude CLI |
 
 ## Usage
 

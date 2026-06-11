@@ -1,20 +1,12 @@
-name: Cross-OS CI
+name: Cross-OS CI (Plan52 D-§1-08)
 
 # Plan52 R3 D-§1-08 UNANIMOUS — cross-OS CI matrix MUST run on Linux + Windows.
 # Catches path-separator bugs, line-ending bugs, process-creation differences.
-#
-# FIX-2026-06-11 (harness engineering): rewritten for the PUBLIC two-repo
-# layout. The previous version hard-coded `working-directory:
-# agent_dev/openstarry` (the internal eco-workspace path) and never checked
-# out the sibling openstarry_plugin repo — so on the published repo, pnpm
-# install could not resolve the ~36 `workspace:*` plugin dependencies and CI
-# could never pass. Also: the release-tag gate listened for tag refs but
-# `on.push` had no tag filter, so it never fired. Both fixed.
+# Complements Rule #75 §75.X release-tag pnpm build at the per-PR level.
 
 on:
   push:
     branches: [main, "release/**"]
-    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -29,17 +21,9 @@ jobs:
         node: ["22.x"]
     defaults:
       run:
-        working-directory: openstarry
+        working-directory: agent_dev/openstarry
     steps:
-      # Documented two-repo layout: openstarry/ and openstarry_plugin/ as siblings.
       - uses: actions/checkout@v4
-        with:
-          path: openstarry
-
-      - uses: actions/checkout@v4
-        with:
-          repository: SecludedCorner/openstarry_plugin
-          path: openstarry_plugin
 
       - uses: pnpm/action-setup@v4
         with:
@@ -49,15 +33,15 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-          cache-dependency-path: openstarry/pnpm-lock.yaml
+          cache-dependency-path: agent_dev/openstarry/pnpm-lock.yaml
 
       - name: pnpm install (frozen-lockfile per Rule #75 §75.X)
         run: pnpm install --frozen-lockfile
 
-      - name: pnpm build (workspace incl. sibling plugins)
+      - name: pnpm build (45+ workspaces)
         run: pnpm build
 
-      - name: pnpm test (vitest, full monorepo + plugins)
+      - name: pnpm test (vitest, full monorepo)
         run: pnpm test
 
       - name: Microkernel purity check (MR-6 baseline)
@@ -73,15 +57,9 @@ jobs:
     needs: build-and-test
     defaults:
       run:
-        working-directory: openstarry
+        working-directory: agent_dev/openstarry
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: openstarry
-      - uses: actions/checkout@v4
-        with:
-          repository: SecludedCorner/openstarry_plugin
-          path: openstarry_plugin
       - uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
@@ -89,7 +67,7 @@ jobs:
         with:
           node-version: 22.x
           cache: pnpm
-          cache-dependency-path: openstarry/pnpm-lock.yaml
+          cache-dependency-path: agent_dev/openstarry/pnpm-lock.yaml
 
       - name: Fresh-state install + build (Rule #75 §75.X)
         run: |
@@ -98,4 +76,4 @@ jobs:
 
       - name: Capture build artefact hash
         run: |
-          tar -cf - apps/runner/dist apps/channel/dist packages/*/dist 2>/dev/null | sha256sum | tee artefact-sha256.txt
+          tar -cf - dist apps/runner/dist apps/channel/dist packages/*/dist 2>/dev/null | sha256sum | tee artefact-sha256.txt

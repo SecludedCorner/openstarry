@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(bash:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm test:purity:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(dconf dump:*)",
+      "Bash(dconf list:*)",
+      "Bash(gsettings list-schemas:*)",
+      "Bash(PROFILE=\"b1dcc9dd-5262-4d8d-a863-c897e6d979b9\":*)",
+      "Bash(wc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm add:*)",
+      "Bash(node -e:*)",
+      "Bash(pnpm clean:all:*)",
+      "Bash(du:*)",
+      "Bash(pnpm exec vitest:*)",
+      "Bash(ls:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && grep \"\"name\\\\|version\"\" {} | head -2')",
+      "Bash(pnpm -r exec:*)",
+      "Bash(pnpm -r run build:*)",
+      "Bash(node:*)",
+      "Bash(./node_modules/.bin/vitest:*)",
+      "Bash(tee:*)",
+      "Bash(/data/openstarry_eco/share/test/reports/dev_logs/20260211_cycle22/dev-core_Plan19_CodeFix.md << 'EOF'\n# Dev Log: Plan19 Service Injection - Code Fix Rework\n\n- Date: 2026-02-12\n- Cycle: 20260211_cycle22\n- Agent: dev-core\n- Plan: Plan19 Service Injection\n- SDK Interface Changed: YES \\(added `has\\(\\)` method\\)\n- Status: BUILD_PASS, TESTS_PASS \\(pre-existing test failure in plugin-dependencies.e2e.test.ts unrelated to changes\\)\n\n## Changes Made\n\n### 1. Added `has\\(\\)` method to IServiceRegistry interface\n- File: `/data/openstarry_eco/agent_dev/openstarry/packages/sdk/src/types/service.ts:43-48`\n- Added `has\\(name: string\\): boolean` method to interface\n- Provides existence check before retrieval\n\n### 2. Implemented `has\\(\\)` method in ServiceRegistry class  \n- File: `/data/openstarry_eco/agent_dev/openstarry/packages/core/src/infrastructure/service-registry.ts:49-56`\n- Implementation: `has\\(name: string\\): boolean { return this.services.has\\(name\\); }`\n- Simple delegation to internal Map\n\n### 3. Added tests for `has\\(\\)` method\n- File: `/data/openstarry_eco/agent_dev/openstarry/packages/core/__tests__/infrastructure/service-registry.test.ts:94-105`\n- Test 1: `has\\(\\)` returns true for registered service\n- Test 2: `has\\(\\)` returns false for non-existent service\n- Total service-registry tests: 19 \\(all passing\\)\n\n### 4. Verified AgentCore exports serviceRegistry\n- File: `/data/openstarry_eco/agent_dev/openstarry/packages/core/src/agents/agent-core.ts:67`\n- Already exposed as `readonly serviceRegistry: IServiceRegistry` in AgentCore interface\n- Implementation returns it correctly on line 240\n- No changes needed\n\n## Build Output\n\n```\npnpm build\n✓ All packages built successfully\n✓ No TypeScript errors\n✓ Total build time: ~11s\n```\n\n## Test Results\n\n```\npnpm test:purity\n✓ All purity checks passed\n\npnpm test packages/core/__tests__/infrastructure/service-registry.test.ts\n✓ 19 tests passed \\(including 2 new has\\(\\) tests\\)\n\nFull test suite:\n✓ 1063 tests passed\n✗ 4 tests failed in plugin-dependencies.e2e.test.ts \\(PRE-EXISTING\\)\n✓ 2 tests skipped\n```\n\n## Notes\n\n### Spec Addendum Compliance\nAll code fixes fully comply with the approved Spec Addendum:\n1. `IServiceRegistry` pattern with `ctx.services` - IMPLEMENTED\n2. `has\\(\\)` method - ADDED as requested\n3. Field names \\(`services`, `serviceDependencies`\\) - CORRECT as-is\n4. `serviceRegistry` export in AgentCore - VERIFIED \\(already present\\)\n\n### Pre-existing Test Failure\nThe `plugin-dependencies.e2e.test.ts` failure is NOT caused by our changes:\n- Root cause: Missing `/packages/core/src/sandbox/plugin-worker-runner.js` \\(build artifact\\)\n- The `.ts` source file exists but compiled `.js` is missing\n- Affects sandbox worker creation in e2e tests\n- Tests try to spawn sandboxed plugins, fail on worker file not found\n- This is a build/compilation issue unrelated to service registry changes\n\n### Total LOC Changed\n- Interface: 7 lines added \\(documentation + signature\\)\n- Implementation: 8 lines added \\(documentation + method body\\)\n- Tests: 11 lines added \\(2 test cases with descriptions\\)\n- **Total: 26 lines \\(under 30 LOC as expected\\)**\n\n### Verification\nAll architect-requested fixes completed:\n- [x] Add `has\\(\\)` to IServiceRegistry interface\n- [x] Implement `has\\(\\)` in ServiceRegistry class\n- [x] Add 2 tests for has\\(\\)\n- [x] Verify field name alignment \\(no changes needed - approved by addendum\\)\n- [x] Verify serviceRegistry export in AgentCore \\(already present\\)\n- [x] Build passes\n- [x] Tests pass \\(service-registry: 19/19\\)\n- [x] Purity check passes\nEOF)",
+      "Bash(ln:*)",
+      "Bash(npx vitest:*)",
+      "Bash(pnpm list:*)",
+      "Bash(test:*)",
+      "Bash(npx tsx:*)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(rsync:*)",
+      "Bash(pnpm -r run clean:*)",
+      "Bash(pnpm run clean:*)"
+    ]
+  }
+}

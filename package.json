@@ -1,6 +1,6 @@
 {
   "name": "openstarry",
-  "version": "0.59.0-alpha",
+  "version": "0.57.10-alpha",
   "private": true,
   "type": "module",
   "scripts": {

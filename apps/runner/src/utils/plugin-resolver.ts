@@ -4,8 +4,8 @@
  * Supports path-based, system directory, and package-name-based resolution.
  */
 
-import { resolve, join, dirname } from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -163,43 +163,16 @@ async function resolvePlugin(ref: { name: string; path?: string; config?: Record
 }
 
 /**
- * Default plugin search paths derived from the runner's own location.
- *
- * FIX-2026-06-11 (provider-by-name resolution): in the documented monorepo
- * layout (README "Project Structure"), `openstarry_plugin/` sits as a SIBLING
- * of the `openstarry/` monorepo root. Plugins not listed in the runner's
- * package.json (e.g. provider-claude-cli) previously failed by-name
- * resolution unless the user discovered the undocumented per-plugin `path`
- * field. The sibling directory is now a built-in search path — no
- * ~/.openstarry/config.json required. Non-monorepo installs are unaffected
- * (the path simply does not exist and is skipped).
- *
- * Location math: this module lives at <root>/apps/runner/{src|dist}/utils/,
- * so the monorepo root is 4 levels up and the sibling is `../openstarry_plugin`.
- */
-export function getDefaultPluginSearchPaths(): string[] {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const monorepoRoot = resolve(here, "../../../..");
-    return [resolve(monorepoRoot, "../openstarry_plugin")];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Find plugin entry path in system plugin directories.
  *
  * Algorithm:
  * 1. Check cache first (process-lifetime)
- * 2. Read system config to get pluginSearchPaths (optional — defaults still
- *    apply when the config is absent; FIX-2026-06-11)
- * 3. Append built-in default search paths (monorepo sibling openstarry_plugin/)
- * 4. For each search path:
+ * 2. Read system config to get pluginSearchPaths
+ * 3. For each search path:
  *    a. Scan directory for subdirectories
  *    b. Read package.json in each subdirectory
  *    c. If package.json.name matches packageName, return entry path
- * 5. If not found in any search path, return null
+ * 4. If not found in any search path, return null
  *
  * @param packageName - Package name to search (e.g., "@openstarry-plugin/standard-function-fs")
  * @returns Absolute path to plugin entry file, or null if not found
@@ -211,15 +184,9 @@ async function findInSystemDirectory(packageName: string): Promise<string | null
   }
 
   try {
-    let configuredPaths: string[] = [];
-    try {
-      configuredPaths = (await readSystemConfig()).pluginSearchPaths;
-    } catch {
-      // System config absent — built-in defaults below still apply (FIX-2026-06-11).
-    }
-    const searchPaths = [...configuredPaths, ...getDefaultPluginSearchPaths()];
+    const config = await readSystemConfig();
 
-    for (const searchPath of searchPaths) {
+    for (const searchPath of config.pluginSearchPaths) {
       if (!existsSync(searchPath)) {
         continue;
       }
