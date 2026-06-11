@@ -64,6 +64,8 @@ import { createSignatureVerifier } from "../sandbox/signature-verification.js";
 import { createGearArbiterRegistry } from "../mano/index.js";
 import { createManoAggregator } from "../mano/index.js";
 import { createVitakkaWatchdog } from "../vijnana/vitakka-watchdog.js";
+import { createDefaultKleshas } from "../vijnana/klesha.js";
+import type { IKlesha, KleshaContext } from "@openstarry/sdk";
 import {
   DEFAULT_VITAKKA_WATCHDOG_CONFIG,
   DEFAULT_MANO_AGGREGATOR_CONFIG,
@@ -110,6 +112,49 @@ export function createVedanaFn(registry: VedanaRegistry): () => VedanaAssessment
     return {
       aggregate, channels, pidOutput: avgValence * maxIntensity, timestamp: Date.now(),
     };
+  };
+}
+
+/**
+ * Build a live klesha-signal getter from the four Plan26 perceivers.
+ *
+ * FIX-2026-06-11: until this wiring, `getKleshaSignals` was hardcoded to
+ * neutral zeros at the volition-deps layer, so the klesha gain-scheduling
+ * machinery (Doc 37) never modulated anything at runtime. Each call samples
+ * the current vedana aggregate into a bounded history and runs all four
+ * perceivers over (recentVedana, actionHistory). With an empty history the
+ * perceivers emit their own neutral baselines — the documented
+ * Optional-degraded behavior (Tenet #7 three-tier criticality), not a stub.
+ *
+ * Exported (like createVedanaFn above) so the wiring is unit-testable.
+ */
+export function createKleshaSignalFn(
+  perceivers: readonly IKlesha[],
+  vedanaFn: () => VedanaAssessment,
+  actionHistory: readonly string[],
+  historyCap = 20,
+): (sessionId?: string) => KleshaSignalBundle {
+  const recentVedana: ChannelVedana[] = [];
+  return (sessionId?: string): KleshaSignalBundle => {
+    const assessment = vedanaFn();
+    recentVedana.push(assessment.aggregate);
+    if (recentVedana.length > historyCap) recentVedana.shift();
+    const context: KleshaContext = {
+      ...(sessionId !== undefined ? { sessionId } : {}),
+      recentVedana,
+      actionHistory,
+    };
+    const bundle: Record<'moha' | 'drishti' | 'mana' | 'sneha', number> = {
+      moha: 0, drishti: 0, mana: 0, sneha: 0,
+    };
+    for (const k of perceivers) {
+      try {
+        bundle[k.type] = k.perceive(context).value;
+      } catch (err) {
+        logger.debug('Klesha perceive error', { klesha: k.type, error: err });
+      }
+    }
+    return bundle;
   };
 }
 
@@ -199,6 +244,20 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
     drishti: { ...DEFAULT_KLESHA_FILTER_CONFIG.drishti, ...config.kleshaFilter?.drishti },
     mana: { ...DEFAULT_KLESHA_FILTER_CONFIG.mana, ...config.kleshaFilter?.mana },
     sneha: { ...DEFAULT_KLESHA_FILTER_CONFIG.sneha, ...config.kleshaFilter?.sneha },
+  });
+
+  // FIX-2026-06-11: klesha perceivers consume resolvedKleshaFilterConfig
+  // (computed since Plan32 W4 but previously fed to nothing). Action history
+  // is collected from live tool:executing events; vedana history is sampled
+  // per deliberation inside createKleshaSignalFn.
+  const kleshaPerceivers = createDefaultKleshas(resolvedKleshaFilterConfig);
+  const KLESHA_ACTION_HISTORY_CAP = 20;
+  const kleshaActionHistory: string[] = [];
+  bus.on('tool:executing', (event) => {
+    const name = (event.payload as { name?: string } | undefined)?.name;
+    if (!name) return;
+    kleshaActionHistory.push(name);
+    if (kleshaActionHistory.length > KLESHA_ACTION_HISTORY_CAP) kleshaActionHistory.shift();
   });
 
   // ManoAggregator created after plugin loading to wire auditor; use lazy init
@@ -495,7 +554,8 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
       const volitionDeps = pluginVolition ? {
         deliberatePlan: pluginVolition.deliberatePlan.bind(pluginVolition),
         deliberateAction: pluginVolition.deliberateAction.bind(pluginVolition),
-        getKleshaSignals: (): KleshaSignalBundle => ({ moha: 0, drishti: 0, mana: 0, sneha: 0 }),
+        // FIX-2026-06-11: live perceiver wiring (was hardcoded neutral zeros).
+        getKleshaSignals: createKleshaSignalFn(kleshaPerceivers, vedanaFn, kleshaActionHistory),
         getVedanaAssessment: vedanaFn,
       } : undefined;
 
