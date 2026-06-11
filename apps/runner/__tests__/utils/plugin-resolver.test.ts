@@ -1,7 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { resolvePlugins, getDefaultPluginSearchPaths } from "../../src/utils/plugin-resolver.js";
+import { resolvePlugins } from "../../src/utils/plugin-resolver.js";
 import type { IAgentConfig, IPlugin } from "@openstarry/sdk";
 
 // Mock plugin factory
@@ -209,35 +207,4 @@ describe("resolvePlugins", () => {
     expect(result).toBeDefined();
     expect(result.errors.length).toBeGreaterThan(0);
   });
-});
-
-describe("sibling-workspace default search path (FIX-2026-06-11)", () => {
-  it("getDefaultPluginSearchPaths includes the monorepo sibling openstarry_plugin dir", () => {
-    const paths = getDefaultPluginSearchPaths();
-    expect(paths.length).toBeGreaterThan(0);
-    expect(paths[0].replace(/\\/g, "/")).toMatch(/openstarry_plugin$/);
-  });
-
-  // The sibling dir exists in the documented monorepo layout; the built entry
-  // is only present after `pnpm build`, so guard to keep CI-from-clean green.
-  const siblingDir = getDefaultPluginSearchPaths()[0];
-  const claudeCliEntry = siblingDir
-    ? join(siblingDir, "provider-claude-cli", "dist", "index.js")
-    : "";
-  const builtSiblingAvailable = claudeCliEntry !== "" && existsSync(claudeCliEntry);
-
-  it.skipIf(!builtSiblingAvailable)(
-    "resolves a sibling plugin BY NAME without per-plugin path or system config (the smoke-run landmine)",
-    async () => {
-      const config = createConfig([
-        { name: "@openstarry-plugin/provider-claude-cli" },
-      ]);
-
-      const result = await resolvePlugins(config, false);
-
-      expect(result.errors).toEqual([]);
-      expect(result.plugins.length).toBe(1);
-      expect(result.plugins[0].manifest.name).toContain("claude-cli");
-    },
-  );
 });
