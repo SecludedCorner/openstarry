@@ -27,6 +27,7 @@ import { findProjectRoot } from "../utils/project-detector.js";
 import { validateProjectConfig } from "../utils/permission-validator.js";
 import { mergeConfigs } from "../utils/config-merger.js";
 import type { IProjectContext } from "@openstarry/sdk";
+import { createObservability } from "../observability.js";
 
 export class StartCommand implements CliCommand {
   name = "start";
@@ -115,6 +116,15 @@ export class StartCommand implements CliCommand {
     // 5. Create core
     const core = createAgentCore(validation.config!);
 
+    // Plan48 wire-in (FIX-2026-06-11): opt-in observability — structured-log
+    // via OPENSTARRY_LOG_PATH, audit-sink via OPENSTARRY_AUDIT=1. No-op when
+    // env is unset. See ../observability.ts for the honest wiring status.
+    const obs = createObservability();
+    obs.log?.info("runner:started", {
+      configPath: targetConfigPath,
+      agent: validation.config!.identity?.name ?? null,
+    });
+
     // 6. Load plugins
     const pluginResult = await resolvePlugins(
       validation.config!,
@@ -129,9 +139,18 @@ export class StartCommand implements CliCommand {
     for (const plugin of pluginResult.plugins) {
       const filtered = wrapPluginWithToolFilter(plugin, (event) => {
         core.bus.emit({ type: event.type, timestamp: Date.now(), payload: event });
+        // Plan48 wire-in (FIX-2026-06-11): journal denial to the audit-sink
+        // (dedup + JSONL) when enabled — the producer the sink waited for.
+        obs.publishCapabilityDenied({
+          plugin: event.plugin,
+          tool: event.tool,
+          allowedTools: event.allowedTools,
+          timestamp: event.timestamp,
+        });
       });
       const captured = capturePluginHooks(filtered, hookMap);
       await core.loadPlugin(captured);
+      obs.log?.info("plugin:loaded", { name: plugin.manifest.name, version: plugin.manifest.version });
     }
     // Plan47 C47-K3-M3 — wire CheckpointManager into daemon lifecycle.
     //   - On startup: if --checkpoint-path is set and the file exists, verify
@@ -203,6 +222,12 @@ export class StartCommand implements CliCommand {
         }
 
         await core.stop();
+
+        // Plan48 wire-in (FIX-2026-06-11): flush observability buffers via the
+        // shared registry (structured-log order 200 → audit-sink order 300).
+        obs.log?.info("runner:shutdown", { signal });
+        await obs.flush(signal === "SIGTERM" ? "SIGTERM" : signal === "SIGINT" ? "SIGINT" : "programmatic");
+
         resolve(0);
       };
 
