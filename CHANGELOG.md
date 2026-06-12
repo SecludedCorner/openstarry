@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [Unreleased]
+
+- **Test hygiene — audit-trail residue eliminated**: the shared e2e fixture
+  (`apps/runner/__tests__/e2e/helpers/agent-fixture.ts`) built a real
+  AgentCore without an `auditTrail` config, so agent-core's CWD-relative
+  default (`./audit-trail-<agentId>.jsonl`) appended 3 hash-chained entries
+  to a tracked repo-root file on every full `pnpm test` run — committed as
+  residue in v0.59.0/v0.59.1/v0.59.2. The fixture now writes to a per-run
+  `os.tmpdir()` dir (fresh hash chain each run, removed in `cleanup()`);
+  the three tracked residue files (root + apps/runner `…test-agent.jsonl`,
+  root `…smoke-chatgpt.jsonl`) are deleted and `audit-trail-*.jsonl` is
+  gitignored as a safety net. No runtime code changed.
+
 ## [v0.59.2-alpha] — 2026-06-12 — On-prem provider hardening + the time-capsule documents
 
 The last code ticket of the closing track plus the document layer the project

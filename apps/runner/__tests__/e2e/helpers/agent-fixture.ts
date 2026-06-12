@@ -16,6 +16,9 @@ import type {
 } from "@openstarry/sdk";
 import { createAgentCore, type AgentCore } from "@openstarry/core";
 import { MockProvider } from "./mock-provider.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 function createMockContextManagerPlugin(): IPlugin {
   return {
@@ -54,6 +57,11 @@ export function createAgentFixture(
   const mockProvider = new MockProvider();
   const events: AgentEvent[] = [];
 
+  // Without an explicit auditTrail config, AgentCore defaults to
+  // ./audit-trail-<agentId>.jsonl in the vitest CWD — i.e. repo residue.
+  // A fresh tmp dir per fixture also gives each run a clean hash chain.
+  const auditTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openstarry-e2e-audit-"));
+
   const defaultConfig: IAgentConfig = {
     identity: {
       id: "test-agent",
@@ -80,6 +88,9 @@ export function createAgentFixture(
     },
     plugins: [],
     guide: "test-guide",
+    auditTrail: {
+      filePath: path.join(auditTmpDir, "audit-trail-test-agent.jsonl"),
+    },
     ...config,
   };
 
@@ -136,6 +147,11 @@ export function createAgentFixture(
       await core.stop();
       events.length = 0;
       mockProvider.reset();
+      try {
+        fs.rmSync(auditTmpDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
     },
   };
 }
