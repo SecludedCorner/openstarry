@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## [v0.59.2-alpha] — 2026-06-12 — On-prem provider hardening + the time-capsule documents
+
+The last code ticket of the closing track plus the document layer the project
+was retired into. Verified: **294 test files / 3155 passed / 0 failed / 4
+skipped**; purity PASS; cold smoke PASS.
+
+### On-prem providers to claude-cli grade (openstarry_plugin)
+- **provider-lmstudio (0 → 36 tests)**: pure stream-mappers extracted
+  (`parseSseLine` / `mapOpenAiChunk` / `buildPayload`); wire behavior
+  bit-identical; two pre-existing quirks pinned by tests as documented
+  future-hardening candidates (missing-delta TypeError path; no final-buffer
+  flush on unterminated SSE line).
+- **provider-local-llama (3 smoke → 39 tests + 1 gated e2e)**: pure mappers
+  extracted with finish-dedup state (`mapOllamaChunk(chunk, state)`); the
+  three near-duplicate finish-yield sites consolidated into one mapper path.
+- **NEW real-Ollama e2e smoke**, `skipIf`-gated on 127.0.0.1:11434 — honest
+  marker: this machine has no Ollama, so the e2e has NEVER executed here;
+  it runs only on hosts with Ollama + ≥1 model installed.
+- **Fossils flushed**: buffer-remnant finish path dropped usage/tool_calls
+  on a non-newline-terminated final NDJSON line (defensive path only — real
+  Ollama always newline-terminates); dead write-only `toolCallMap` removed.
+
+### Time-capsule document layer (openstarry_doc)
+- **LETTER_TO_THE_FUTURE.md**: the charter — rationale layer (doc 50/41/DD14)
+  wrapped around the fulfillment ledger plus the honest process data (87.5%
+  spec-vs-merged gap, 96% closure inflation). Adversarially fact-checked by a
+  3-lens workflow before commit; 11 blocking + 8 minor findings fixed.
+- **RETROSPECTIVE.md** (draft): audited numbers with per-row provenance and
+  the mechanism analysis of inflation as a structural end-state.
+- **DISTILLATION_LIST.md**: all 353 canonical docs classified (51 blueprint /
+  95 fix / 29 quarantine / 133 archive) by a 16-agent sweep.
+- **ZENODO_DEPOSIT_RUNBOOK.md**: deposit prep complete; three Master-only
+  decision points marked (attribution, license, account action).
+- TENETS_FULFILLMENT: unfinished-list item 4 (on-prem providers) cleared
+  with honest scope.
+
 ## [v0.59.1-alpha] — 2026-06-11 — Gap fill: the cheap-and-honest remainders closed
 
 Master:「OK，並且補缺口」. Three gaps from the fulfillment ledger closed same
