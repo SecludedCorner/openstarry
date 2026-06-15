@@ -21,10 +21,12 @@
  * here — the start command owns SIGINT/SIGTERM and calls `flush()` inside
  * its own shutdown path to avoid double-handling.
  *
- * NOT wired (honest status): hmac-cleanup (C48-M3) remains a library —
- * integrating its capture-and-zero key flow requires refactoring the
- * checkpoint HMAC path (snapshot-hmac.ts) and was judged out of repair
- * scope; see apps/runner/src/hmac-cleanup/README.md.
+ * hmac-cleanup (C48-M3): WIRED 2026-06-15. start.ts captures the checkpoint
+ * HMAC key via captureHmacKey (reads + zeroes OPENSTARRY_CHECKPOINT_HMAC_KEY),
+ * drives snapshot signing/verification through the binding's digest (raw key
+ * never exposed), and registers registerHmacCleanupShutdown on this registry
+ * at order 400 (after audit-sink flush 300). The required snapshot-hmac refactor
+ * — a SnapshotHmacSigner abstraction — keeps the on-wire signature byte-identical.
  */
 
 import { AuditBus, AuditSink } from "./audit-sink/index.js";

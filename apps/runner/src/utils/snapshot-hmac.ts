@@ -63,32 +63,74 @@ export function generateNonce(): Buffer {
 }
 
 /**
- * Sign a UTF-8 payload with HMAC-SHA256. The signed material is the
- * concatenation of `nonce || ":" || signedAt || ":" || payload` so the
- * signature binds both replay-defense data and the declared wall-clock
- * timestamp (used by the NonceRegistry freshness check).
+ * A snapshot signer abstracts the HMAC key away from the call-site: given the
+ * canonical signed material (a Buffer), it returns the raw HMAC-SHA256 digest.
+ * This lets a key holder that never exposes the raw key (e.g. the hmac-cleanup
+ * capture-and-zero binding) drive checkpoint signing/verification.
+ *
+ * The signed material is identical to the legacy key path (see
+ * {@link buildSnapshotMaterial}), so a signer built via {@link keySigner} is
+ * byte-for-byte compatible with the historical signSnapshotPayload(key) output.
  */
-export function signSnapshotPayload(
+export type SnapshotHmacSigner = (material: Buffer) => Buffer;
+
+/**
+ * Build the canonical signed material: `nonce || ":" || signedAt || ":" || payload`.
+ * Concatenated into a single Buffer — HMAC over this is identical to the prior
+ * sequence of per-segment update() calls.
+ */
+function buildSnapshotMaterial(nonce: Buffer, signedAt: number, payload: string): Buffer {
+  return Buffer.concat([
+    nonce,
+    Buffer.from(':'),
+    Buffer.from(String(signedAt)),
+    Buffer.from(':'),
+    Buffer.from(payload, 'utf-8'),
+  ]);
+}
+
+/**
+ * A {@link SnapshotHmacSigner} backed by a raw key (Buffer / hex / base64 / utf-8).
+ * Applies {@link normalizeHmacKey} (>= 32 bytes) exactly as the legacy path did.
+ */
+export function keySigner(key: Buffer | string): SnapshotHmacSigner {
+  const keyBuf = normalizeHmacKey(key);
+  return (material: Buffer) => createHmac(SNAPSHOT_HMAC_ALGORITHM, keyBuf).update(material).digest();
+}
+
+/**
+ * Sign a UTF-8 payload via a {@link SnapshotHmacSigner}. Material binds the
+ * replay nonce + declared wall-clock timestamp (NonceRegistry freshness check).
+ */
+export function signSnapshotPayloadWith(
   payload: string,
-  key: Buffer | string,
+  signer: SnapshotHmacSigner,
   options?: { readonly nonce?: Buffer; readonly signedAt?: number },
 ): SnapshotSignatureEnvelope {
-  const keyBuf = normalizeHmacKey(key);
   const nonce = options?.nonce ?? generateNonce();
   const signedAt = options?.signedAt ?? Date.now();
-  const hmac = createHmac(SNAPSHOT_HMAC_ALGORITHM, keyBuf);
-  hmac.update(nonce);
-  hmac.update(':');
-  hmac.update(String(signedAt));
-  hmac.update(':');
-  hmac.update(payload, 'utf-8');
-  const signature = hmac.digest('hex');
+  const signature = signer(buildSnapshotMaterial(nonce, signedAt, payload)).toString('hex');
   return {
     algorithm: SNAPSHOT_HMAC_ALGORITHM,
     nonce: nonce.toString('hex'),
     signature,
     signedAt,
   };
+}
+
+/**
+ * Sign a UTF-8 payload with HMAC-SHA256 (raw-key convenience overload). The
+ * signed material is the concatenation of `nonce || ":" || signedAt || ":" ||
+ * payload` so the signature binds both replay-defense data and the declared
+ * wall-clock timestamp. Delegates to {@link signSnapshotPayloadWith} via
+ * {@link keySigner} — byte-identical to the historical implementation.
+ */
+export function signSnapshotPayload(
+  payload: string,
+  key: Buffer | string,
+  options?: { readonly nonce?: Buffer; readonly signedAt?: number },
+): SnapshotSignatureEnvelope {
+  return signSnapshotPayloadWith(payload, keySigner(key), options);
 }
 
 /**
@@ -99,10 +141,10 @@ export function signSnapshotPayload(
  * Returns `{ ok: true }` on match, `{ ok: false, reason }` with a structured
  * reason otherwise (never throws for bad input — the caller decides fall-back).
  */
-export function verifySnapshotPayload(
+export function verifySnapshotPayloadWith(
   payload: string,
   envelope: SnapshotSignatureEnvelope,
-  key: Buffer | string,
+  signer: SnapshotHmacSigner,
 ): { ok: true } | { ok: false; reason: string } {
   if (envelope.algorithm !== SNAPSHOT_HMAC_ALGORITHM) {
     return { ok: false, reason: `unsupported algorithm ${envelope.algorithm}` };
@@ -116,20 +158,15 @@ export function verifySnapshotPayload(
   if (typeof envelope.signedAt !== 'number' || !Number.isFinite(envelope.signedAt)) {
     return { ok: false, reason: 'malformed signedAt' };
   }
-  let keyBuf: Buffer;
+  const nonceBuf = Buffer.from(envelope.nonce, 'hex');
+  let expected: Buffer;
   try {
-    keyBuf = normalizeHmacKey(key);
+    // Signer may throw (e.g. key too short, or capture-and-zero binding cleared) —
+    // treat as a verification failure, never as an uncaught crash (fail-closed).
+    expected = signer(buildSnapshotMaterial(nonceBuf, envelope.signedAt, payload));
   } catch (err) {
     return { ok: false, reason: (err as Error).message };
   }
-  const nonceBuf = Buffer.from(envelope.nonce, 'hex');
-  const hmac = createHmac(SNAPSHOT_HMAC_ALGORITHM, keyBuf);
-  hmac.update(nonceBuf);
-  hmac.update(':');
-  hmac.update(String(envelope.signedAt));
-  hmac.update(':');
-  hmac.update(payload, 'utf-8');
-  const expected = hmac.digest();
   let received: Buffer;
   try {
     received = Buffer.from(envelope.signature, 'hex');
@@ -143,6 +180,25 @@ export function verifySnapshotPayload(
     return { ok: false, reason: 'signature mismatch' };
   }
   return { ok: true };
+}
+
+/**
+ * Verify a signature envelope against the payload using a raw key
+ * (convenience overload). Delegates to {@link verifySnapshotPayloadWith} via
+ * {@link keySigner}; key-normalization errors surface as `{ ok: false }`.
+ */
+export function verifySnapshotPayload(
+  payload: string,
+  envelope: SnapshotSignatureEnvelope,
+  key: Buffer | string,
+): { ok: true } | { ok: false; reason: string } {
+  let signer: SnapshotHmacSigner;
+  try {
+    signer = keySigner(key);
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+  return verifySnapshotPayloadWith(payload, envelope, signer);
 }
 
 /**

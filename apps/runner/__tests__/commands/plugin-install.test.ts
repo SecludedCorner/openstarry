@@ -126,7 +126,10 @@ describe("PluginInstallCommand", () => {
   });
 
   describe("--all flag", () => {
-    it("installs all plugins when --all is set", { timeout: 60000 }, async () => {
+    // Real `pnpm install` of all plugins legitimately takes ~55–75s and is
+    // environment/disk/network sensitive; the prior 60000ms cap flaked under load
+    // (timed out at the 60s boundary on otherwise-green runs). 180s gives headroom.
+    it("installs all plugins when --all is set", { timeout: 180000 }, async () => {
       const cmd = new PluginInstallCommand();
       const args: ParsedArgs = {
         command: "plugin-install",

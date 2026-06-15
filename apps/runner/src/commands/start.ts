@@ -20,7 +20,8 @@ import {
   readSnapshotStore,
   writeSnapshotStore,
 } from "../utils/snapshot-store.js";
-import { NonceRegistry } from "../utils/snapshot-hmac.js";
+import { NonceRegistry, normalizeHmacKey, type SnapshotHmacSigner } from "../utils/snapshot-hmac.js";
+import { captureHmacKey, registerHmacCleanupShutdown, type HmacCleanupBinding } from "../hmac-cleanup/index.js";
 import type { PluginHooks } from "@openstarry/sdk";
 import type { ConfigValidationError } from "../utils/config-validator.js";
 import { findProjectRoot } from "../utils/project-detector.js";
@@ -161,13 +162,28 @@ export class StartCommand implements CliCommand {
     //     (MR-6 compliant — runner-local policy only).
     const checkpointMgr = createCheckpointManager(hookMap);
     const checkpointPath = this.resolveCheckpointPath(args);
-    const hmacKey = this.resolveHmacKey(args);
+    // Plan48 C48-M3 (FIX-2026-06-15): capture the checkpoint HMAC key into a
+    // closure and zero its env var (capture-and-zero, OWASP ASVS V2.10.1 /
+    // NIST SP 800-57 §8.2.2) — the plaintext key no longer lives in process.env
+    // for the daemon lifetime, nor is it inherited by spawned children. Signing
+    // and verification go through the binding's digest (the raw key is never
+    // returned to start.ts), and the key is wiped at shutdown order 400 — after
+    // the checkpoint write below, which runs before obs.flush() triggers the
+    // shutdown cascade.
+    // Only touch the key (and zero its env) when a checkpoint path is actually
+    // configured — matches the prior behavior of reading the key lazily.
+    const hmacBinding = checkpointPath ? this.captureCheckpointHmacKey(args) : null;
+    const checkpointSigner: SnapshotHmacSigner | null =
+      hmacBinding ? (material) => hmacBinding.digest(material) : null;
+    if (hmacBinding) {
+      registerHmacCleanupShutdown(obs.shutdown, { binding: hmacBinding });
+    }
     const nonceRegistry = new NonceRegistry();
 
-    if (checkpointPath && hmacKey) {
+    if (checkpointPath && checkpointSigner) {
       const readResult = await readSnapshotStore({
         path: checkpointPath,
-        key: hmacKey,
+        signer: checkpointSigner,
         nonces: nonceRegistry,
       });
       if (readResult.ok) {
@@ -179,7 +195,7 @@ export class StartCommand implements CliCommand {
         // Missing file is a first-run condition; any other failure is fail-closed.
         console.error(`[cli] Checkpoint restore skipped: ${readResult.reason}`);
       }
-    } else if (checkpointPath && !hmacKey) {
+    } else if (checkpointPath && !checkpointSigner) {
       console.error(
         '[cli] --checkpoint-path requires OPENSTARRY_CHECKPOINT_HMAC_KEY ' +
         '(or --checkpoint-hmac-key) to sign/verify the blob. Skipping checkpoint wire-in.',
@@ -207,10 +223,10 @@ export class StartCommand implements CliCommand {
         // Plan47 C47-K3-M3 — persist checkpoint before core.stop() so plugin
         // state is captured while hooks are still valid (dispose() runs inside
         // core.stop() and clears internal state in some plugins).
-        if (checkpointPath && hmacKey) {
+        if (checkpointPath && checkpointSigner) {
           try {
             const snapshots = checkpointMgr.checkpoint();
-            await writeSnapshotStore(snapshots, { path: checkpointPath, key: hmacKey });
+            await writeSnapshotStore(snapshots, { path: checkpointPath, signer: checkpointSigner });
             console.error(
               `[cli] Wrote ${snapshots.size} plugin snapshot(s) to ${checkpointPath}`,
             );
@@ -267,16 +283,24 @@ export class StartCommand implements CliCommand {
   }
 
   /**
-   * Plan47 C47-K3-M1/M5 — resolve HMAC key from CLI flag or env. Returned
-   * as a string so {@link normalizeHmacKey} can pick hex vs utf-8. Keys never
-   * enter Core; see {@link snapshot-hmac.ts} for the key contract.
+   * Plan47 C47-K3-M1/M5 + Plan48 C48-M3 — capture the checkpoint HMAC key into
+   * a capture-and-zero binding (hmac-cleanup). A `--checkpoint-hmac-key` flag is
+   * injected as a directKey; otherwise the key is read from
+   * `OPENSTARRY_CHECKPOINT_HMAC_KEY` and that env var is zeroed/deleted so the
+   * plaintext does not persist in the environment. `normalizeHmacKey` is passed
+   * so the binding's digest matches the legacy keySigner(rawKey) byte-for-byte.
+   * Returns null when no key is configured (checkpoint stays disabled).
+   * Keys never enter Core; see {@link snapshot-hmac.ts} for the key contract.
    */
-  private resolveHmacKey(args: ParsedArgs): string | null {
+  private captureCheckpointHmacKey(args: ParsedArgs): HmacCleanupBinding | null {
     const flag = args.flags["checkpoint-hmac-key"];
-    if (typeof flag === "string" && flag.length > 0) return flag;
-    const env = process.env["OPENSTARRY_CHECKPOINT_HMAC_KEY"];
-    if (env && env.length > 0) return env;
-    return null;
+    if (typeof flag === "string" && flag.length > 0) {
+      return captureHmacKey({ directKey: flag, normalize: normalizeHmacKey });
+    }
+    return captureHmacKey({
+      envNames: ["OPENSTARRY_CHECKPOINT_HMAC_KEY"],
+      normalize: normalizeHmacKey,
+    });
   }
 
   private printValidationErrors(errors: ConfigValidationError[]): void {

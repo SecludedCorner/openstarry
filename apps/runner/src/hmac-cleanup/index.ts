@@ -39,6 +39,16 @@ export interface HmacCleanupBinding {
    */
   sign(payload: string): string;
   /**
+   * HMAC-SHA256 over arbitrary binary material, returning the raw digest.
+   * Used to drive checkpoint signing/verification (snapshot-hmac's
+   * SnapshotHmacSigner) without ever exposing the plaintext key. When a
+   * `normalize` function was supplied to {@link captureHmacKey}, the key is
+   * normalized (hex/base64 decode + length check) the same way the legacy
+   * key path did, so digests are byte-identical to keySigner(rawKey).
+   * Throws once the key has been cleared.
+   */
+  digest(material: Buffer): Buffer;
+  /**
    * Clear the closure-held key. Called by the shutdown hook after the
    * final shutdown signing completes. Idempotent.
    */
@@ -50,6 +60,15 @@ export interface CaptureHmacKeyOptions {
   readonly envNames?: readonly string[];
   /** Provide the key directly (test / CLI injection); env is skipped. */
   readonly directKey?: string;
+  /**
+   * Optional key normalizer used by {@link HmacCleanupBinding.digest} — decodes
+   * hex/base64 and enforces a minimum length, exactly as the snapshot-hmac key
+   * path does. Supply `normalizeHmacKey` here so checkpoint digests match
+   * keySigner(rawKey). When omitted, `digest` HMACs the raw key bytes (utf-8).
+   * May throw (e.g. key too short); `digest` propagates that so callers can
+   * fail-closed.
+   */
+  readonly normalize?: (raw: string) => Buffer;
 }
 
 /**
@@ -89,6 +108,8 @@ export function captureHmacKey(
   // Intentionally shadow the outer `key` to remove the local-scope reference.
   key = null;
 
+  const normalize = opts.normalize;
+
   return Object.freeze({
     get captured() { return captured; },
     get cleared() { return cleared; },
@@ -97,6 +118,13 @@ export function captureHmacKey(
         throw new Error('hmac-cleanup: key already cleared; sign before shutdown cascade');
       }
       return createHmac('sha256', closureKey).update(payload, 'utf-8').digest('hex');
+    },
+    digest(material: Buffer): Buffer {
+      if (closureKey === null) {
+        throw new Error('hmac-cleanup: key already cleared; sign before shutdown cascade');
+      }
+      const keyMaterial = normalize ? normalize(closureKey) : Buffer.from(closureKey, 'utf-8');
+      return createHmac('sha256', keyMaterial).update(material).digest();
     },
     clear(): void {
       if (closureKey !== null) {

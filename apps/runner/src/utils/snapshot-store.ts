@@ -22,10 +22,12 @@ import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { PluginSnapshot } from '@openstarry/sdk';
 import {
-  signSnapshotPayload,
-  verifySnapshotPayload,
+  signSnapshotPayloadWith,
+  verifySnapshotPayloadWith,
+  keySigner,
   NonceRegistry,
   type SnapshotSignatureEnvelope,
+  type SnapshotHmacSigner,
 } from './snapshot-hmac.js';
 
 /** Envelope version — bump on incompatible on-disk format changes. */
@@ -46,12 +48,28 @@ export interface SnapshotPayload {
 }
 
 export interface SnapshotStoreOptions {
-  /** HMAC key (hex / base64 / utf-8 string, or Buffer). Min 32 bytes. */
-  readonly key: Buffer | string;
+  /**
+   * HMAC key (hex / base64 / utf-8 string, or Buffer). Min 32 bytes.
+   * Either `key` or `signer` must be provided; `signer` takes precedence.
+   */
+  readonly key?: Buffer | string;
+  /**
+   * A {@link SnapshotHmacSigner} that signs without exposing the raw key —
+   * e.g. the hmac-cleanup capture-and-zero binding's digest. Preferred over
+   * `key` when the caller must not hold the plaintext key (Plan48 C48-M3).
+   */
+  readonly signer?: SnapshotHmacSigner;
   /** Absolute path of the checkpoint file. */
   readonly path: string;
   /** Optional nonce registry for replay protection across reads. */
   readonly nonces?: NonceRegistry;
+}
+
+/** Resolve the effective signer: explicit `signer` wins, else build from `key`. */
+function resolveSigner(options: SnapshotStoreOptions): SnapshotHmacSigner {
+  if (options.signer) return options.signer;
+  if (options.key !== undefined) return keySigner(options.key);
+  throw new Error('snapshot-store: either `signer` or `key` is required');
 }
 
 /**
@@ -67,7 +85,7 @@ export async function writeSnapshotStore(
     snapshots: [...snapshots.entries()].map(([name, snap]) => [name, snap]),
   };
   const payloadJson = JSON.stringify(payload);
-  const signature = signSnapshotPayload(payloadJson, options.key);
+  const signature = signSnapshotPayloadWith(payloadJson, resolveSigner(options));
   const envelope: SnapshotStoreFile = {
     envelopeVersion: SNAPSHOT_STORE_ENVELOPE_VERSION,
     createdAt: Date.now(),
@@ -119,7 +137,12 @@ export async function readSnapshotStore(options: SnapshotStoreOptions): Promise<
     return { ok: false, reason: 'signature must be an object' };
   }
   const signature = env['signature'] as unknown as SnapshotSignatureEnvelope;
-  const verify = verifySnapshotPayload(env['payload'] as string, signature, options.key);
+  let verify: { ok: true } | { ok: false; reason: string };
+  try {
+    verify = verifySnapshotPayloadWith(env['payload'] as string, signature, resolveSigner(options));
+  } catch (err) {
+    return { ok: false, reason: `signer error: ${(err as Error).message}` };
+  }
   if (!verify.ok) {
     return { ok: false, reason: `HMAC verify failed: ${verify.reason}` };
   }
