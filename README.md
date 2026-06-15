@@ -24,10 +24,10 @@ parent_directory/
 │
 └── openstarry_plugin/         ← Plugin ecosystem (sibling directory)
     ├── standard-function-*    # Standard tools
-    ├── provider-*             # LLM Providers (6 providers)
+    ├── provider-*             # LLM Providers (8 providers)
     ├── transport-*            # Transport layer
     ├── web-ui                 # Browser interface
-    └── ...                    # 34 plugins total
+    └── ...                    # 44 plugins total
 ```
 
 > `pnpm-workspace.yaml` includes `../openstarry_plugin/*` in the workspace — install, build, and test all at once.
@@ -58,7 +58,7 @@ On first run, `~/.openstarry/` will be created automatically. After startup, set
 
 ## Provider Setup
 
-OpenStarry supports 6 LLM providers out of the box. All configs load all providers by default — just log in to the one you have.
+OpenStarry ships 8 provider plugins; the six most common setups are shown below. All configs load all providers by default — just log in to the one you have.
 
 ### Option A: Gemini (API Key) — Easiest
 
@@ -247,7 +247,7 @@ Key concepts:
 - **EventBridge**: Federation of events across multi-agent networks
 - **Graceful Shutdown**: Coordinated termination with configurable grace periods (max 300s)
 
-See [Doc 53: Multi-Agent Communication Interface Spec](../share/openstarry_doc/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md) for detailed protocol documentation.
+See [Doc 53: Multi-Agent Communication Interface Spec](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md) for detailed protocol documentation.
 
 ## Available Configurations
 
@@ -334,24 +334,27 @@ OpenStarry follows the **Five Aggregates** philosophy, mapping all plugin capabi
 
 | Aggregate | Interface | Role |
 |-----------|-----------|------|
-| Form (色) | `IUI` | User interface rendering |
-| Sensation (受) | `IListener` | Event listeners and transports |
+| Form (色) | `IUI` + `IListener` | Outward form (UI rendering) and sensory input channels |
+| Sensation (受) | `IVedana` | Feedback quality signals (dukkha/sukha/upekkha) |
 | Perception (想) | `IProvider` | LLM service providers |
 | Formation (行) | `ITool` | Executable tools and actions |
 | Consciousness (識) | `IGuide` | System prompts and guidance |
+
+> Note: an earlier revision of this table mis-assigned `IListener` to 受 (Sensation). The canonical mapping (corrected at Cycle 02-4, see the doc repo's Deep Dive 14) places listeners under 色 (Form) — a listener is a sense organ, not a feeling.
 
 The **microkernel** core stays minimal — all features live in plugins. Plugins communicate with the core via the `pushInput()` pattern, never through direct API calls.
 
 ## Documentation
 
+The full documentation corpus lives in the companion repo **[openstarry_doc](https://github.com/SecludedCorner/openstarry_doc)** — start with its guided reading path:
+
 | Document | Description |
 |----------|-------------|
-| [Architecture Overview](./docs/EN/architecture.md) | Five Aggregates philosophy, microkernel design, event-driven flow |
-| [Plugin Overview](./docs/EN/plugins.md) | All 34 plugins categorized and explained |
-| [Configuration Format](./docs/EN/configuration.md) | agent.json structure, plugin resolution order, environment variables |
-| [Development Guide](./docs/EN/development.md) | Creating new plugins, test commands, building |
-| [CLI Commands](./docs/EN/cli.md) | CLI command reference, slash commands |
+| [Letter to the Future](https://github.com/SecludedCorner/openstarry_doc/blob/main/LETTER_TO_THE_FUTURE.md) | What this project is, why, what it proved, and where it failed — with the honest numbers |
+| [Tenets Fulfillment Ledger](https://github.com/SecludedCorner/openstarry_doc/blob/main/TENETS_FULFILLMENT.md) | Per-tenet evidence: how far each of the Ten Tenets is proven by running code |
+| [Getting Started](https://github.com/SecludedCorner/openstarry_doc/blob/main/GETTING_STARTED.md) | 10 minutes from config to your first plugin (verified against the real CLI) |
+| [Retrospective](https://github.com/SecludedCorner/openstarry_doc/blob/main/RETROSPECTIVE.md) | How a multi-agent dev system inflated its progress by 96%, got caught, and got honest |
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

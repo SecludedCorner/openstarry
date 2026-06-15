@@ -24,10 +24,10 @@ parent_directory/
 │
 └── openstarry_plugin/         ← 插件生態系統（同層目錄）
     ├── standard-function-*    # 標準工具
-    ├── provider-*             # LLM Provider（6 個）
+    ├── provider-*             # LLM Provider（8 個）
     ├── transport-*            # 傳輸層
     ├── web-ui                 # 瀏覽器介面
-    └── ...                    # 共 34 個插件
+    └── ...                    # 共 44 個插件
 ```
 
 > `pnpm-workspace.yaml` 已將 `../openstarry_plugin/*` 納入工作區，安裝、編譯、測試一次搞定。
@@ -246,7 +246,7 @@ OpenStarry 現已支援透過 **ICommChannel** 與 **Process Tree** 架構的協
 - **EventBridge**: 跨多代理網路的事件聯邦
 - **優雅關閉**: 可配置的協調終止，grace period 最大 300 秒
 
-詳細協議文件見 [Doc 53: Multi-Agent Communication Interface Spec](../share/openstarry_doc/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md)。
+詳細協議文件見 [Doc 53: Multi-Agent Communication Interface Spec](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md)。
 
 ## 可用配置
 
@@ -262,7 +262,7 @@ OpenStarry 現已支援透過 **ICommChannel** 與 **Process Tree** 架構的協
 | `mcp-agent.json` | MCP 協議 agent | 與 Claude Code 等 MCP 客戶端整合 |
 | `full-agent.json` | 全功能 | 開發、展示用 |
 
-> 所有配置都載入全部 6 個 Provider。修改 `cognition.provider` 和 `cognition.model` 即可切換。
+> 所有配置都預載 provider 插件（共 8 個）。修改 `cognition.provider` 和 `cognition.model` 即可切換。
 
 ## Provider 自動配置
 
@@ -329,24 +329,27 @@ Plugin 的 `config` 物件會作為 `ctx.config` 傳入 factory。啟動時 prov
 
 | 蘊 | 介面 | 角色 |
 |----|------|------|
-| 色 | `IUI` | 使用者介面渲染 |
-| 受 | `IListener` | 事件監聽與傳輸 |
+| 色 | `IUI` + `IListener` | 外顯形相（UI 渲染）與感官輸入通道 |
+| 受 | `IVedana` | 感受品質信號（苦／樂／捨三受回饋） |
 | 想 | `IProvider` | LLM 服務提供者 |
 | 行 | `ITool` | 可執行工具與動作 |
 | 識 | `IGuide` | 系統提示與引導 |
+
+> 註：本表早期版本曾把 `IListener` 誤歸受蘊。canonical 映射（Cycle 02-4 修正，見文件庫 Deep Dive 14）將監聽器歸於色蘊——監聽器是感官根門，不是感受本身。
 
 **微核心**保持最小化——所有功能都在插件中。插件透過 `pushInput()` 模式與核心溝通，絕不直接呼叫 API。
 
 ## 更多文件
 
+完整文件庫在姊妹 repo **[openstarry_doc](https://github.com/SecludedCorner/openstarry_doc)**——從它的導讀路徑開始：
+
 | 文件 | 說明 |
 |------|------|
-| [架構概覽](./docs/TW/architecture.md) | 五蘊哲學、微核心設計、事件驅動流程 |
-| [插件一覽](./docs/TW/plugins.md) | 全 34 個插件的分類與說明 |
-| [配置格式](./docs/TW/configuration.md) | agent.json 結構、插件解析順序、環境變數 |
-| [開發指南](./docs/TW/development.md) | 開發新插件、測試指令、編譯 |
-| [CLI 指令](./docs/TW/cli.md) | CLI 指令總覽、斜線指令 |
+| [致未來的信](https://github.com/SecludedCorner/openstarry_doc/blob/main/LETTER_TO_THE_FUTURE.md) | 這個專案是什麼、為什麼、證明了什麼、哪裡失敗——附誠實數據 |
+| [十大宣言兌現帳本](https://github.com/SecludedCorner/openstarry_doc/blob/main/TENETS_FULFILLMENT.md) | 每條宣言被可運行的代碼證明到什麼程度，逐條附證據 |
+| [GETTING_STARTED](https://github.com/SecludedCorner/openstarry_doc/blob/main/GETTING_STARTED.md) | 10 分鐘從配置到寫出第一個 Plugin（對照真實 CLI 驗證） |
+| [Retrospective](https://github.com/SecludedCorner/openstarry_doc/blob/main/RETROSPECTIVE.md) | 一個多智能體開發系統如何灌水 96%、被抓到、然後誠實起來 |
 
 ## 授權
 
-MIT
+Apache-2.0——見 [LICENSE](./LICENSE) 與 [NOTICE](./NOTICE)。
