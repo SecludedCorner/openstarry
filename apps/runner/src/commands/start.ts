@@ -11,7 +11,9 @@ import type { IAgentConfig, IProjectPermissions } from "@openstarry/sdk";
 import { AgentEventType } from "@openstarry/sdk";
 import { createAgentCore } from "@openstarry/core";
 import type { CliCommand, ParsedArgs } from "./base.js";
-import { bootstrap, DEFAULT_AGENT_PATH } from "../bootstrap.js";
+import { bootstrap, DEFAULT_AGENT_PATH, SESSIONS_DIR } from "../bootstrap.js";
+import { FileSessionPersistence } from "../daemon/session-persistence.js";
+import { saveCliSessions, restoreCliSession } from "../utils/cli-session-persistence.js";
 import { validateConfig } from "../utils/config-validator.js";
 import { resolvePlugins } from "../utils/plugin-resolver.js";
 import { wrapPluginWithToolFilter, capturePluginHooks } from "../utils/tool-filter-proxy.js";
@@ -117,6 +119,15 @@ export class StartCommand implements CliCommand {
     // 5. Create core
     const core = createAgentCore(validation.config!);
 
+    // GAP-2026-06-15 (ledger #9): foreground CLI conversation persistence.
+    // Session save/load previously existed only on the daemon path; a CLI REPL's
+    // history was memory-only and lost on exit. We persist live sessions at
+    // shutdown (always, non-empty only) and restore the default session's history
+    // on `--resume`. Same FileSessionPersistence store the daemon uses.
+    const cliAgentId = validation.config!.identity?.id ?? "default-agent";
+    const cliPersistence = new FileSessionPersistence(SESSIONS_DIR);
+    const resumeRequested = Boolean(args.flags["resume"]);
+
     // Plan48 wire-in (FIX-2026-06-11): opt-in observability — structured-log
     // via OPENSTARRY_LOG_PATH, audit-sink via OPENSTARRY_AUDIT=1. No-op when
     // env is unset. See ../observability.ts for the honest wiring status.
@@ -208,6 +219,17 @@ export class StartCommand implements CliCommand {
       return 1;
     }
 
+    // GAP-2026-06-15: restore the default CLI session's history on --resume,
+    // before start() so the first REPL turn continues the prior conversation.
+    if (resumeRequested) {
+      const restored = await restoreCliSession(cliPersistence, cliAgentId, core.sessionManager);
+      console.error(
+        restored > 0
+          ? `[cli] Resumed ${restored} message(s) from the previous session`
+          : `[cli] --resume: no previous session history found for "${cliAgentId}"`,
+      );
+    }
+
     // 7. Start
     await core.start();
 
@@ -235,6 +257,16 @@ export class StartCommand implements CliCommand {
               `[cli] Checkpoint write failed: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
+        }
+
+        // GAP-2026-06-15: persist CLI conversation history before core.stop()
+        // (dispose() may clear plugin/session state). Immediate save so the
+        // write completes before the process exits; non-empty sessions only.
+        try {
+          const saved = await saveCliSessions(cliPersistence, cliAgentId, core.sessionManager);
+          if (saved > 0) console.error(`[cli] Saved ${saved} session(s) to disk (resume with --resume)`);
+        } catch (err) {
+          console.error(`[cli] Session save failed: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         await core.stop();

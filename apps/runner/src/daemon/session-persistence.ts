@@ -48,6 +48,8 @@ interface SessionIndex {
  */
 export interface ISessionPersistence {
   save(agentId: string, session: ISession, messages: Message[]): Promise<void>;
+  /** Immediate (non-debounced) save — for shutdown / CLI exit. */
+  saveNow(agentId: string, session: ISession, messages: Message[]): Promise<void>;
   load(agentId: string, sessionId: string): Promise<SessionData | null>;
   listSessions(agentId: string): Promise<SessionIndexEntry[]>;
   delete(agentId: string, sessionId: string): Promise<void>;
@@ -111,6 +113,26 @@ export class FileSessionPersistence implements ISessionPersistence {
     }, 10000); // 10 seconds
 
     this.debouncedSaves.set(key, timer);
+  }
+
+  /**
+   * Save immediately, bypassing the debounce. Use at shutdown / CLI exit where
+   * the process may terminate before a debounce timer fires (the debounced
+   * save() would otherwise schedule a 10s timer that never runs). Cancels any
+   * pending debounce for this session and resets its pending count.
+   */
+  async saveNow(agentId: string, session: ISession, messages: Message[]): Promise<void> {
+    if (this.isInvalidSessionId(session.id)) {
+      throw new Error("Invalid session ID: must not contain '/' or '..'");
+    }
+    const key = `${agentId}:${session.id}`;
+    const existingTimer = this.debouncedSaves.get(key);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.debouncedSaves.delete(key);
+    }
+    this.pendingMessageCounts.set(key, 0);
+    await this.saveImmediate(agentId, session, messages);
   }
 
   /**
