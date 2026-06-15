@@ -2,7 +2,7 @@
 
 本地 AI Agent 框架——微核心 + 插件驅動，3 分鐘跑起你的第一個 AI Agent。
 
-版本：**v0.59.3-alpha** ｜ 測試：**3163 passed / 0 failed** ｜ 插件：**43 個** ｜ 授權：**Apache-2.0**
+版本：**v0.59.3-alpha** ｜ 測試：**3163 passed / 0 failed** ｜ 插件：**44 個** ｜ 授權：**Apache-2.0**
 
 [English](./README.md)
 
@@ -27,7 +27,7 @@ parent_directory/
     ├── provider-*             # LLM Provider（8 個）
     ├── transport-*            # 傳輸層
     ├── web-ui                 # 瀏覽器介面
-    └── ...                    # 共 43 個可載入插件（另 1 個共享型別庫）
+    └── ...                    # 共 44 個可載入插件（另 1 個共享型別庫）
 ```
 
 > `pnpm-workspace.yaml` 已將 `../openstarry_plugin/*` 納入工作區，安裝、編譯、測試一次搞定。

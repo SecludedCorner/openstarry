@@ -40,6 +40,28 @@ importers:
         specifier: ^4.0.18
         version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(yaml@2.8.3))
 
+  ../openstarry_plugin/agent-spawn:
+    dependencies:
+      '@openstarry/sdk':
+        specifier: workspace:*
+        version: link:../../openstarry/packages/sdk
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.6.0
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(yaml@2.8.3))
+
   ../openstarry_plugin/api-runtime:
     dependencies:
       '@openstarry/sdk':

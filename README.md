@@ -2,7 +2,7 @@
 
 A local AI Agent framework — microkernel + plugin-driven. Get your first AI Agent running in 3 minutes.
 
-Version: **v0.59.3-alpha** | Tests: **3163 passed / 0 failed** | Plugins: **43** | License: **Apache-2.0**
+Version: **v0.59.3-alpha** | Tests: **3163 passed / 0 failed** | Plugins: **44** | License: **Apache-2.0**
 
 [繁體中文](./README_TW.md)
 
@@ -27,7 +27,7 @@ parent_directory/
     ├── provider-*             # LLM Providers (8 providers)
     ├── transport-*            # Transport layer
     ├── web-ui                 # Browser interface
-    └── ...                    # 43 loadable plugins (+1 shared types lib)
+    └── ...                    # 44 loadable plugins (+1 shared types lib)
 ```
 
 > `pnpm-workspace.yaml` includes `../openstarry_plugin/*` in the workspace — install, build, and test all at once.

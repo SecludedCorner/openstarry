@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Socket } from "node:net";
-import type { IAgentConfig, InputEvent, ISeed } from "@openstarry/sdk";
+import type { IAgentConfig, InputEvent, ISeed, IDaemonSpawnService } from "@openstarry/sdk";
 import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS, SpawnDeniedError } from "@openstarry/sdk";
 import { createAgentCore, isPathSafe } from "@openstarry/core";
 import { validateSpawnConstraints, computeAgentDepth } from "./spawn-validator.js";
@@ -35,7 +35,7 @@ import { RPCErrorCode, Plan37RPCErrorCode } from "./types.js";
 import { spawnDaemon } from "./launcher.js";
 import { initEventForwarder } from "./event-forwarder.js";
 import { FileSessionPersistence } from "./session-persistence.js";
-import { SESSIONS_DIR } from "../bootstrap.js";
+import { SESSIONS_DIR, OPENSTARRY_HOME } from "../bootstrap.js";
 import { MessageRouter } from "./message-router.js";
 import { EventBridge } from "./event-bridge.js";
 import { GlobalServiceRegistry } from "./global-service-registry.js";
@@ -176,6 +176,31 @@ async function main(): Promise<void> {
         ref.config = { agentId, hmacKeyHex, ...(ref.config ?? {}) };
       }
     }
+
+    // 3.6 Register the runtime spawn service (ledger #10) BEFORE plugins load,
+    // so the agent-spawn plugin's agent.spawnChild ITool can consume it via
+    // SERVICE_KEYS.DAEMON_SPAWN. Backed by handleSpawnChild — the same path that
+    // enforces the F-5 permission lattice (depth/budget/ceiling, A②) + SEC-003.
+    // parentId is THIS daemon's own agent (self-registered in the process tree),
+    // so an LLM-initiated spawn is a genuine child of the running agent. Only the
+    // daemon registers this; in foreground/CLI mode it is absent and the tool
+    // reports a clear daemon-only error.
+    const spawnService: IDaemonSpawnService = {
+      name: "daemon-spawn",
+      version: "1.0.0",
+      async spawnChild(input) {
+        const result = await handleSpawnChild({
+          parentId: agentId,
+          childConfig: {
+            agentId: input.agentId,
+            configPath: input.configPath,
+            statePath: input.statePath ?? OPENSTARRY_HOME,
+          },
+        });
+        return { pid: result.pid, agentId: result.agentId };
+      },
+    };
+    core.serviceRegistry.register(spawnService);
 
     // 4. Load plugins
     const pluginResult = await resolvePlugins(config, false, null);

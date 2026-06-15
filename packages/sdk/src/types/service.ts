@@ -43,10 +43,13 @@ export class ServiceKey<T extends IPluginService> {
  */
 import type { ICognitionConfigService } from "./cognition.js";
 import type { IDistributedAlaya } from "./distributed-alaya.js";
+import type { IDaemonSpawnService } from "./daemon-spawn.js";
 
 export const SERVICE_KEYS = {
   COGNITION_CONFIG: new ServiceKey<ICognitionConfigService>("cognition-config"),
   DISTRIBUTED_ALAYA: new ServiceKey<IDistributedAlaya & IPluginService>("distributed-alaya"),
+  /** Runtime child-spawn capability — registered by the daemon (ledger #10). */
+  DAEMON_SPAWN: new ServiceKey<IDaemonSpawnService>("daemon-spawn"),
 } as const;
 
 /**

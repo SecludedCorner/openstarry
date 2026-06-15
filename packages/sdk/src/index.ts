@@ -65,6 +65,11 @@ export type {
 export { DEFAULT_CONFIRMATION_GATE_CONFIG } from "./types/confirmation-gate.js";
 export type { IPluginService, IServiceRegistry } from "./types/service.js";
 export { ServiceKey, SERVICE_KEYS } from "./types/service.js";
+export type {
+  IDaemonSpawnService,
+  DaemonSpawnChildInput,
+  DaemonSpawnChildResult,
+} from "./types/daemon-spawn.js";
 export type { ICognitionConfigService } from "./types/cognition.js";
 
 export type {
