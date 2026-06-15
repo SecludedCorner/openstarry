@@ -19,8 +19,10 @@ import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Socket } from "node:net";
 import type { IAgentConfig, InputEvent, ISeed } from "@openstarry/sdk";
-import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS } from "@openstarry/sdk";
+import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS, SpawnDeniedError } from "@openstarry/sdk";
 import { createAgentCore, isPathSafe } from "@openstarry/core";
+import { validateSpawnConstraints, computeAgentDepth } from "./spawn-validator.js";
+import { PermissionLattice } from "./permission-lattice.js";
 import { parseArgs } from "../utils/args.js";
 import { validateConfig } from "../utils/config-validator.js";
 import { resolvePlugins } from "../utils/plugin-resolver.js";
@@ -737,6 +739,40 @@ async function handleSpawnChild(
     };
   }
 
+  // Permission lattice (Plan38 C11): enforce depth + budget/ceiling + comm-capability
+  // constraints via validateSpawnConstraints. GAP-2026-06-15: this validator existed
+  // with full logic but had ZERO production callers — spawn DEPTH was never enforced
+  // despite the spawn-validator header's "non-bypassable" claim. Now wired. Path-subset
+  // is intentionally NOT routed here (SEC-003 realpath above already gates configPath;
+  // passing declared allowedPaths would risk false denials). Budget/ceiling are skipped
+  // when the registry does not track them (parentRemaining* undefined → guarded checks).
+  if (parentEntry) {
+    let childAgentConfigForValidation: IAgentConfig | undefined;
+    try {
+      childAgentConfigForValidation = await loadConfig(childConfig.configPath);
+    } catch {
+      // Unreadable config here is non-fatal for lattice validation; spawn surfaces load errors.
+    }
+    try {
+      validateSpawnConstraints({
+        parentEntry,
+        childConfig: { agentId: childConfig.agentId, configPath: childConfig.configPath },
+        childAgentConfig: childAgentConfigForValidation,
+        parentDepth: computeAgentDepth(parentId, agentRegistry),
+        messageRouter,
+      });
+    } catch (err: unknown) {
+      if (err instanceof SpawnDeniedError) {
+        throw {
+          code: Plan37RPCErrorCode.PERMISSION_LATTICE_VIOLATION,
+          message: err.message,
+          data: { code: 'SPAWN_DENIED', reason: err.reason, parentId },
+        };
+      }
+      throw err;
+    }
+  }
+
   // Spawn the child daemon process.
   // Pass cluster HMAC key via env (OPENSTARRY_HMAC_KEY) — not via CLI args (not visible in ps).
   // SECURITY: hmacKeyHex MUST NOT appear in args array (visible in ps output).
@@ -966,8 +1002,15 @@ async function shutdown(signal: string): Promise<void> {
     // daemon runs its own graceful shutdown — plus immediate bookkeeping
     // deregistration. No per-child grace wait here: the parent is dying and
     // shutdownWithTimeout caps the whole cascade at 30s.
-    for (const entry of agentRegistry.values()) {
-      if (!entry.parentAgentId || entry.status === 'terminated') continue;
+    // GAP-2026-06-15: drive the cascade through PermissionLattice.cascadeTermination
+    // (recursive, grandchild-first) — this function had full logic but ZERO callers;
+    // the flat loop reaped the tree in registry-iteration order. Same reaping outcome
+    // (every non-root entry gets SIGTERM + bookkeeping), now via the typed lattice with
+    // correct leaf-first ordering. A fallback sweep catches any entry not reachable from
+    // a root (orphaned bookkeeping), preserving the prior loop's completeness.
+    const terminateChildEntry = async (agentId: string): Promise<void> => {
+      const entry = agentRegistry.get(agentId);
+      if (!entry || entry.status === 'terminated' || !entry.parentAgentId) return;
       try {
         process.kill(entry.pid, 'SIGTERM');
         console.error(`[daemon] SIGTERM sent to child agent ${entry.agentId} (pid: ${entry.pid})`);
@@ -981,6 +1024,18 @@ async function shutdown(signal: string): Promise<void> {
       messageRouter.deregisterAgent(entry.agentId);
       agentGracePeriods.delete(entry.agentId);
       removePidIdentity(entry.pid, pidToAgentMap);
+    };
+    const shutdownLattice = new PermissionLattice(agentRegistry, terminateChildEntry);
+    for (const entry of [...agentRegistry.values()]) {
+      if (!entry.parentAgentId) {
+        await shutdownLattice.cascadeTermination(entry.agentId);
+      }
+    }
+    // Fallback sweep: any non-root entry not reached via a root tree.
+    for (const entry of [...agentRegistry.values()]) {
+      if (entry.parentAgentId && entry.status !== 'terminated') {
+        await terminateChildEntry(entry.agentId);
+      }
     }
 
     // Unsubscribe event forwarder
