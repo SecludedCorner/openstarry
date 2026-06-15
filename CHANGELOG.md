@@ -1,17 +1,43 @@
 # CHANGELOG
 
-## [Unreleased]
+## [v0.59.3-alpha] — 2026-06-15 — ISeed replay-nonce (FROZEN-interface Spec Addendum) + facade hardening
 
-- **Test hygiene — audit-trail residue eliminated**: the shared e2e fixture
-  (`apps/runner/__tests__/e2e/helpers/agent-fixture.ts`) built a real
-  AgentCore without an `auditTrail` config, so agent-core's CWD-relative
-  default (`./audit-trail-<agentId>.jsonl`) appended 3 hash-chained entries
-  to a tracked repo-root file on every full `pnpm test` run — committed as
-  residue in v0.59.0/v0.59.1/v0.59.2. The fixture now writes to a per-run
-  `os.tmpdir()` dir (fresh hash chain each run, removed in `cleanup()`);
-  the three tracked residue files (root + apps/runner `…test-agent.jsonl`,
-  root `…smoke-chatgpt.jsonl`) are deleted and `audit-trail-*.jsonl` is
-  gitignored as a safety net. No runtime code changed.
+Master-authorized amendment to a FROZEN SDK interface, plus the distillation/review
+follow-through. Verified: **296 test files / 3163 passed / 0 failed / 4 skipped**;
+purity PASS.
+
+### Replay defense for cross-process seeds (Tenet #6)
+- **`ISeed` gains optional `nonce`** (SDK, FROZEN-interface amendment via Spec Addendum
+  2026-06-15). Purely additive; pre-addendum seeds take the legacy path; `SeedPatch`
+  keeps nonce immutable. Covered by the HMAC signature automatically (seedCanonical
+  hashes every field but `signature`), so a tampered nonce fails verify().
+- **Wired the previously-dead `verifyNonce`** (SEC-001 / Plan46 W0 existed but was never
+  called): `DistributedAlayaImpl.acceptRemote()` now rejects a replayed/reordered seed
+  fail-closed; `plant()` auto-stamps a strictly-increasing per-agent nonce. In-process
+  propagation (trusted) is not nonce-checked — defense lives where the threat is.
+- Tests: `replay-nonce.test.ts` 6/6 (replay rejected, reorder rejected, tamper breaks
+  signature, per-agent independence, backward compat, plant auto-stamp). Ledger #6 updated;
+  remaining non-claims: cross-host transport, nonce restart-persistence.
+- New `context-manager-required.test.ts` (Tenet #2/#9 negative path: core.start() throws
+  with no context-manager plugin) — closes a source-true-but-test-unproven gap.
+
+### Test hygiene — audit-trail residue eliminated
+- The shared e2e fixture (`apps/runner/__tests__/e2e/helpers/agent-fixture.ts`) built a real
+  AgentCore without an `auditTrail` config, so agent-core's CWD-relative default
+  (`./audit-trail-<agentId>.jsonl`) appended 3 hash-chained entries to a tracked repo-root
+  file on every full `pnpm test` run — committed as residue in v0.59.0/v0.59.1/v0.59.2. The
+  fixture now writes to a per-run `os.tmpdir()` dir (fresh hash chain each run, removed in
+  `cleanup()`); the three tracked residue files are deleted and `audit-trail-*.jsonl` is
+  gitignored. No runtime code changed.
+
+### Documentation (openstarry_doc)
+- Distillation wave-1: guided-reading front README, 158 process-residue files moved to
+  `archive/`, quarantine banners, dead-link/license/canonical-drift fixes.
+- LETTER_TO_THE_FUTURE finalized; RETROSPECTIVE finalized; DISTILLATION_LIST; Zenodo runbook
+  + live `.zenodo.json`/`CITATION.cff` (CC-BY-4.0, author Yang Yulin / SecludedCorner).
+- Licenses landed: code repos Apache-2.0, doc corpus CC-BY-4.0.
+- Adversarial 4-lens review (buddhism/philosophy/CS/editorial) + ledger-vs-code verification
+  (every cited test re-run): 2 ledger overclaims tightened, no fabrication found.
 
 ## [v0.59.2-alpha] — 2026-06-12 — On-prem provider hardening + the time-capsule documents
 
