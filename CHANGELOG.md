@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## [v0.59.4-alpha] — 2026-06-16 — doc-vs-code gap closure: wire dead code + close ledger boundaries
+
+A 49-item doc-vs-code gap audit (9 implement / 14 drift / 18 keep-quarantined / 8 future)
+turned into 9 shipped closures. Verified: **300 test files / 3179 passed / 0 failed / 4 skipped**;
+build clean; cold smoke PASS.
+
+### Wired previously-dead code (had tests, zero production callers)
+- **Spawn permission lattice + cascadeTermination** (daemon-entry): `validateSpawnConstraints`
+  now enforces process-tree depth on spawn (was never called despite the "non-bypassable"
+  claim); shutdown reaping runs through the recursive `PermissionLattice.cascadeTermination`.
+- **schema-drift audited-mode sink** (observability): `setSchemaDriftAuditSink` wired to the
+  structured-log writer — `SCHEMA_DRIFT_MODE=audited` previously dropped events into a no-op.
+- **DualRateLimiter** (daemon `agent.input`): per-agent + per-session throttle, fail-closed
+  (RATE_LIMITED -32005) — the daemon previously throttled nothing.
+- **hmac-cleanup capture-and-zero** (checkpoint signing): full redesign — snapshot-hmac gains a
+  byte-identical `SnapshotHmacSigner` abstraction; start.ts captures + zeroes the checkpoint
+  HMAC key env and signs via the binding, wiped at shutdown (OWASP ASVS V2.10.1).
+
+### Closed ledger boundaries (new features)
+- **CLI conversation persistence + `--resume`** (#9): foreground history was memory-only;
+  now saved at shutdown and restorable, via the daemon's session store.
+- **`agent.spawnChild` ITool + daemon DAEMON_SPAWN service** (#10): the running agent's loop can
+  now spawn child processes (subject to the F-5 lattice + SEC-003); NEW `@openstarry-plugin/agent-spawn`.
+
+### Tests + robustness
+- New tests: context-manager-required, schema-drift-audit-wiring, replay-nonce,
+  hmac-cleanup-snapshot-wiring, cli-session-persistence, agent-spawn (and SDK SERVICE_KEYS.DAEMON_SPAWN).
+- Flake fixes: `plugin install --all` timeout 60→180s; guide-persistent atomic-rename retry on
+  transient Windows EPERM/EACCES/EBUSY.
+
+### Docs (openstarry_doc)
+- Plugin README ecosystem-size drift (15→45 packages / 1→8 providers / IListener 受→色);
+  doc 55/57/58 path drift; ledger #2/#3/#6/#9/#10 boundaries updated to match the wired code.
+
 ## [v0.59.3-alpha] — 2026-06-15 — ISeed replay-nonce (FROZEN-interface Spec Addendum) + facade hardening
 
 Master-authorized amendment to a FROZEN SDK interface, plus the distillation/review
