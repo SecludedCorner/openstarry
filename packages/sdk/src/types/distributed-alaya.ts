@@ -30,6 +30,21 @@ export interface ISeed {
   createdAt: number;
   updatedAt: number;
   signature?: string; // Prepared for HMAC-SHA256 per Rule #30
+  /**
+   * Replay-defense nonce: a strictly-increasing per-agent counter assigned at
+   * plant() time. Covered by the HMAC signature (seedCanonical includes every
+   * field except `signature`), so it cannot be tampered without invalidating
+   * the seed. The cross-process receiver (acceptRemote) rejects a seed whose
+   * nonce is <= the last accepted nonce for that agentId (replay / reorder,
+   * fail-closed). OPTIONAL for backward compatibility: pre-addendum seeds
+   * without a nonce take the legacy path (no replay check).
+   *
+   * Spec Addendum 2026-06-15 (ISeed Replay-Nonce) — amends this FROZEN
+   * interface, authorized by Master. Purely additive: existing seeds remain
+   * valid; SeedPatch keeps `nonce` immutable (not in its Pick allowlist).
+   * @since v0.59.3-alpha
+   */
+  nonce?: number;
 }
 
 export interface SeedFilter {
