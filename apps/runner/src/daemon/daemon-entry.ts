@@ -23,6 +23,8 @@ import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS,
 import { createAgentCore, isPathSafe } from "@openstarry/core";
 import { validateSpawnConstraints, computeAgentDepth } from "./spawn-validator.js";
 import { PermissionLattice } from "./permission-lattice.js";
+import { DualRateLimiter } from "./rate-limiter.js";
+import { RateLimitError } from "@openstarry/sdk";
 import { parseArgs } from "../utils/args.js";
 import { validateConfig } from "../utils/config-validator.js";
 import { resolvePlugins } from "../utils/plugin-resolver.js";
@@ -74,6 +76,18 @@ const agentRegistry = new Map<string, AgentRegistryEntry>();
  * Plan37 C11: fail-closed capability-based access control.
  */
 const messageRouter = new MessageRouter();
+
+/**
+ * DualRateLimiter for inbound agent.input. GAP-2026-06-15: DualRateLimiter.check
+ * previously had only test callers — the daemon never throttled any inbound
+ * message despite the header's "both layers must be enforced" claim. Keyed by
+ * this daemon's agentId (per-agent total) + sessionId (per-target/per-session),
+ * using SDK DEFAULT_* limits (100/agent, 20/session per 1000ms window).
+ */
+const inputRateLimiter = new DualRateLimiter();
+
+/** Server-defined JSON-RPC error code (−32000..−32099 reserved) for rate limiting. */
+const RATE_LIMITED_RPC_CODE = -32005;
 
 /**
  * EventBridge — cross-agent event forwarding service.
@@ -554,6 +568,20 @@ async function handleInput(msg: InputMessage): Promise<{ success: boolean }> {
       code: RPCErrorCode.INVALID_PARAMS,
       message: `Input data exceeds max size of 100KB (got ${dataSize} bytes)`,
     };
+  }
+
+  // Rate limit (GAP-2026-06-15): per-agent total + per-session throttle, fail-closed.
+  try {
+    inputRateLimiter.check(ctx.agentId, msg.sessionId);
+  } catch (err: unknown) {
+    if (err instanceof RateLimitError) {
+      throw {
+        code: RATE_LIMITED_RPC_CODE,
+        message: err.message,
+        data: { code: 'RATE_LIMITED', scope: err.limitType, sessionId: msg.sessionId },
+      };
+    }
+    throw err;
   }
 
   const inputEvent: InputEvent = {
