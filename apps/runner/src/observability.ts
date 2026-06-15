@@ -39,6 +39,7 @@ import {
   type ShutdownHookRegistry,
   type ShutdownReason,
 } from "./audit-infra/shutdown-hooks.js";
+import { setSchemaDriftAuditSink } from "./schema-drift-policy/index.js";
 
 export interface Observability {
   /** Structured-log writer, or null when OPENSTARRY_LOG_PATH is unset. */
@@ -68,6 +69,17 @@ export function createObservability(opts: ObservabilityOptions = {}): Observabil
   if (logPath !== undefined) {
     writer = new StructuredLogWriter({ outputPath: logPath });
     registerStructuredLogShutdown(registry, writer);
+  }
+
+  // GAP-2026-06-15: wire the schema-drift audited-mode sink. setSchemaDriftAuditSink
+  // previously had only test callers, so SCHEMA_DRIFT_MODE=audited dropped its events
+  // into the no-op default. Route them to the structured-log writer when one exists;
+  // otherwise leave the no-op (zero behavior change when OPENSTARRY_LOG_PATH is unset).
+  if (writer !== null) {
+    const w = writer;
+    setSchemaDriftAuditSink((e) => { w.info(e.event, e); });
+  } else {
+    setSchemaDriftAuditSink(undefined);
   }
 
   const auditEnabled =
