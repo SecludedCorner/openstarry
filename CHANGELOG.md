@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## [v0.59.5-alpha] — 2026-06-16 — post-release drift-audit consistency patch
+
+Follows the v0.59.4 doc-vs-code gap closure with a post-release drift audit
+(8 dimensions, 18 confirmed doc-vs-code drifts adversarially verified against
+code; 1 false-positive rejected). Mostly documentation honesty fixes; one
+trivial code change. Verified: **300 test files / 3179 passed / 0 failed /
+4 skipped**; build clean; purity PASS; cold smoke PASS.
+
+### Code
+- **`start --resume` now listed in `--help`** (apps/runner/bin.ts): the flag shipped
+  in v0.59.4 but the runner's help text omitted it. One-line fix; no behavior change.
+
+### Docs (openstarry_doc) — honest-marking, no capability claims added
+- **doc 56 (B-Modified Delta)**: QUARANTINE banner — the entire spec describes code
+  that was never built (no `packages/core/src/confidence/`, 0 symbol hits); status
+  PASS → NOT IMPLEMENTED. (Missed by the earlier Tech-Specs-only quarantine sweep.)
+- **doc 57 (Registry Bridge)**: correction banner — the bridge IS real, but §4/§7
+  describe a fictional fork()/PID model; the shipped model is daemon-attested-event
+  (AT-7a Ghost / AT-7b Shadow / AT-7c Identity-Split), 22 tests in registry-bridge.test.ts.
+- **doc 55 (Distributed Alaya)**: fixed 3 line citations that pointed past EOF;
+  honest-scope marker on §5/§7.1 (same-host IPC, N=2 bounded, NOT self-activating).
+- **doc 45 §3.5 / doc 37 §4**: klesha wiring went live at v0.58 (zeros are now only a
+  cold-start fallback); `getConfidenceThreshold` → `computeThreshold` (real name);
+  design-only banner on the Beta/correlation-matrix bundle (runtime bundle is flat).
+- **Ledger / README / GETTING_STARTED**: plugin count 43→44 loadable; CLI persistence
+  marked shipped; Implementation Reference 12+12 → honest 11+12; GETTING_STARTED
+  stamped v0.59.5, documents `--resume`, adds agent-spawn, corrects the init file list.
+
 ## [v0.59.4-alpha] — 2026-06-16 — doc-vs-code gap closure: wire dead code + close ledger boundaries
 
 A 49-item doc-vs-code gap audit (9 implement / 14 drift / 18 keep-quarantined / 8 future)

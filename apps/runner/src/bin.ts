@@ -4,7 +4,7 @@
  * Runner Entry Point — CLI subcommand router.
  *
  * Supports:
- *   - openstarry start [--config <path>] [--verbose]
+ *   - openstarry start [--config <path>] [--verbose] [--resume]
  *   - openstarry init [--force]
  *   - openstarry version [--verbose]
  *   - openstarry (no args) → defaults to "start"
@@ -62,6 +62,7 @@ async function main(): Promise<number> {
     console.log("  --config <path>      Path to agent config file");
     console.log("  --verbose            Show detailed output");
     console.log("  --no-project-dir     Disable project-level .openstarry/ configuration for this run");
+    console.log("  --resume             (start) Restore the previous CLI session's conversation history");
     console.log("  --help, -h           Show this help message");
     return 0;
   }
