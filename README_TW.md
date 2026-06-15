@@ -2,7 +2,7 @@
 
 本地 AI Agent 框架——微核心 + 插件驅動，3 分鐘跑起你的第一個 AI Agent。
 
-版本：**v0.59.2-alpha** ｜ 測試：**3155 passed / 0 failed** ｜ 插件：**44 個** ｜ 授權：**Apache-2.0**
+版本：**v0.59.2-alpha** ｜ 測試：**3155 passed / 0 failed** ｜ 插件：**43 個** ｜ 授權：**Apache-2.0**
 
 [English](./README.md)
 
@@ -27,7 +27,7 @@ parent_directory/
     ├── provider-*             # LLM Provider（8 個）
     ├── transport-*            # 傳輸層
     ├── web-ui                 # 瀏覽器介面
-    └── ...                    # 共 44 個插件
+    └── ...                    # 共 43 個可載入插件（另 1 個共享型別庫）
 ```
 
 > `pnpm-workspace.yaml` 已將 `../openstarry_plugin/*` 納入工作區，安裝、編譯、測試一次搞定。
@@ -58,7 +58,7 @@ node apps/runner/dist/bin.js --config ./configs/basic-agent.json
 
 ## Provider 設定
 
-OpenStarry 內建 6 個 LLM Provider，所有預置配置都會載入全部 Provider——只需登入你有的那個即可。
+OpenStarry 隨庫出貨 8 個 provider 插件，下方列出 6 種最常用設定。各預置配置載入的 provider 子集不同——`basic-agent.json` 預載 6 個（雲端 4＋地端 2），多數其他預置載 5 個（缺 `provider-lmstudio`）；缺的 provider 自行加入 config 的 `plugins` 清單後，登入你有的那個即可。
 
 ### 方案 A：Gemini（API Key）— 最簡單
 
@@ -140,6 +140,8 @@ Plugin 會自動從 LM Studio 的 `/v1/models` 抓取可用模型列表。自訂
 ```
 
 > **提示**：執行 `/provider login lmstudio` 即可看到 LM Studio 中所有已載入的模型。
+>
+> **注意**：`provider-lmstudio` 僅預載於 `basic-agent.json` 與 `basic-agent-lmstudio-auto.json`——其他 config 需先把它加入 `plugins` 清單再登入。
 
 ### 方案 E：Ollama（本地 LLM）
 
@@ -216,37 +218,16 @@ node apps/runner/dist/bin.js daemon stop
 
 ### 多代理協調 (Phase 6)
 
-OpenStarry 現已支援透過 **ICommChannel** 與 **Process Tree** 架構的協調多代理系統。Agent 可生成子代理、在進程樹中路由訊息，並透過事件聯邦協調回應。**openstarry-channel** 中樞支援跨 Daemon Agent 通訊，具備自動健康監測與優雅故障處理。
+OpenStarry 的 Agent 可以生成子代理，並在真實的進程樹中委派認知。
 
-**範例：父子 Agent 通訊**
+**已端到端實證**（見[十大宣言兌現帳本](https://github.com/SecludedCorner/openstarry_doc/blob/main/TENETS_FULFILLMENT.md)宣言 #10）：
+- **agent-ask** 插件把認知迴圈暴露為可委派工具，經 **MCP**（mcp-server＋mcp-client）路由：一個外部呼叫穿越三代 agent 進程（父→中→孫，各自完整認知迴圈），從單一端點返回，<2 秒（`fractal-depth3.e2e.test.ts`）。
+- **進程樹**是真的：root 自註冊、生成子代理的樹邊、越權拒絕（SEC-003）、父亡子收的孤兒回收，全部入 e2e 測試（`daemon-process-tree.e2e.test.ts`）。
+- **優雅關閉**：父進程關閉時級聯 SIGTERM 到子進程。
 
-```json
-{
-  "identity": { "id": "coordinator-agent" },
-  "plugins": [
-    { "name": "@openstarry-plugin/provider-gemini" },
-    { "name": "@openstarry-plugin/comm-pipeline" },
-    { "name": "@openstarry-plugin/comm-proxy" },
-    { "name": "@openstarry-plugin/standard-listener-typed" }
-  ],
-  "communication": {
-    "channels": ["pipeline", "mcp"],
-    "gracePeriodMs": 30000
-  }
-}
-```
+實際試跑：`configs/phase6-agent.json` 啟動完整 MCP 委派堆疊（已過煙霧測試）。
 
-核心概念：
-- **ICommChannel**: Agent 之間的雙向訊息傳遞
-- **openstarry-channel**: 獨立多代理中樞，管理 Agent 登錄與健康監測
-- **comm-proxy**: 故障隔離外掛，具備熔斷器與艙壁隔離
-- **PipelineChannel**: 訊息組合管線路由
-- **ITypedListener**: 將感覺輸入型別（視覺、聽覺、觸覺、嗅覺、味覺）對應到訊息處理器
-- **Process Tree**: 自動追蹤父子代理關係
-- **EventBridge**: 跨多代理網路的事件聯邦
-- **優雅關閉**: 可配置的協調終止，grace period 最大 300 秒
-
-詳細協議文件見 [Doc 53: Multi-Agent Communication Interface Spec](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md)。
+**誠實邊界**（依帳本明確不宣稱條款）：代碼庫中另有通訊子系統——ICommChannel、comm-pipeline、comm-proxy、openstarry-channel 中樞、EventBridge——屬驗證層或未接入已實證路徑，請當作設計參考而非已出貨功能。協議設計筆記見 [Doc 53](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md)。
 
 ## 可用配置
 
@@ -262,7 +243,7 @@ OpenStarry 現已支援透過 **ICommChannel** 與 **Process Tree** 架構的協
 | `mcp-agent.json` | MCP 協議 agent | 與 Claude Code 等 MCP 客戶端整合 |
 | `full-agent.json` | 全功能 | 開發、展示用 |
 
-> 所有配置都預載 provider 插件（共 8 個）。修改 `cognition.provider` 和 `cognition.model` 即可切換。
+> 各配置預載的 provider 子集不同：`basic-agent.json` 載 6 個；`web/websocket/tui/mcp/full` 載 5 個（缺 `provider-lmstudio`）；`basic-agent-lmstudio-auto.json` 載 2 個；`phase6`／`klesha-modulated` 僅載 `provider-claude-cli`。修改 `cognition.provider` 與 `cognition.model` 即可在已載入的 provider 間切換。
 
 ## Provider 自動配置
 
@@ -306,6 +287,8 @@ Plugin 的 `config` 物件會作為 `ctx.config` 傳入 factory。啟動時 prov
 > **注意**：Config 值只在 SecureStore 中沒有現有憑證時才會使用。一旦設定完成（無論透過 config 或 `/provider login`），憑證會加密儲存在 `~/.openstarry/`——後續執行自動使用已儲存的憑證。
 
 ## 架構
+
+OpenStarry 遵循**五蘊**哲學，把所有插件能力映射為五種基本類型：
 
 ### 插件分類
 

@@ -2,7 +2,7 @@
 
 A local AI Agent framework — microkernel + plugin-driven. Get your first AI Agent running in 3 minutes.
 
-Version: **v0.59.2-alpha** | Tests: **3155 passed / 0 failed** | Plugins: **44** | License: **Apache-2.0**
+Version: **v0.59.2-alpha** | Tests: **3155 passed / 0 failed** | Plugins: **43** | License: **Apache-2.0**
 
 [繁體中文](./README_TW.md)
 
@@ -27,7 +27,7 @@ parent_directory/
     ├── provider-*             # LLM Providers (8 providers)
     ├── transport-*            # Transport layer
     ├── web-ui                 # Browser interface
-    └── ...                    # 44 plugins total
+    └── ...                    # 43 loadable plugins (+1 shared types lib)
 ```
 
 > `pnpm-workspace.yaml` includes `../openstarry_plugin/*` in the workspace — install, build, and test all at once.
@@ -58,7 +58,7 @@ On first run, `~/.openstarry/` will be created automatically. After startup, set
 
 ## Provider Setup
 
-OpenStarry ships 8 provider plugins; the six most common setups are shown below. All configs load all providers by default — just log in to the one you have.
+OpenStarry ships 8 provider plugins. The six most common setups are shown below. Preloaded providers vary by config — `basic-agent.json` preloads 6 (4 cloud + 2 local); most other presets preload 5 (all but `provider-lmstudio`). Add any missing provider to the config's `plugins` list, then log in to the one you have.
 
 ### Option A: Gemini (API Key) — Easiest
 
@@ -140,6 +140,8 @@ Config:
 ```
 
 > **Tip**: Run `/provider login lmstudio` to see all available models loaded in LM Studio.
+>
+> **Note**: `provider-lmstudio` is preloaded only by `basic-agent.json` and `basic-agent-lmstudio-auto.json` — add it to the `plugins` list of other configs before logging in.
 
 ### Option E: Ollama (Local LLM)
 
@@ -216,38 +218,16 @@ node apps/runner/dist/bin.js daemon stop
 
 ### Multi-Agent Coordination (Phase 6)
 
-OpenStarry now supports coordinated multi-agent systems via **ICommChannel** and **Process Tree** architecture. Agents can spawn child agents, route messages across the process tree, and coordinate responses via event federation. The **openstarry-channel** hub enables cross-daemon agent communication with automatic health monitoring and graceful failure handling.
+OpenStarry agents can spawn child agents and delegate cognition across a real process tree.
 
-**Example: Parent-Child Agent Communication**
+**Proven end-to-end** (see [Tenets Fulfillment Ledger](https://github.com/SecludedCorner/openstarry_doc/blob/main/TENETS_FULFILLMENT.md), Tenet #10):
+- **agent-ask** plugin exposes the cognition loop as a delegable tool, routed over **MCP** (mcp-server + mcp-client): one external call traverses three agent processes (parent → middle → grandchild, each running its full cognition loop) and returns through a single endpoint in <2s (`fractal-depth3.e2e.test.ts`).
+- **Process Tree** is real: root self-registration, child spawning with tree edges, out-of-scope denial (SEC-003), and parent-death orphan reaping are all covered by e2e tests (`daemon-process-tree.e2e.test.ts`).
+- **Graceful shutdown**: parent shutdown cascades SIGTERM to spawned children.
 
-```json
-{
-  "identity": { "id": "coordinator-agent" },
-  "plugins": [
-    { "name": "@openstarry-plugin/provider-gemini" },
-    { "name": "@openstarry-plugin/comm-pipeline" },
-    { "name": "@openstarry-plugin/comm-proxy" },
-    { "name": "@openstarry-plugin/standard-listener-typed" }
-  ],
-  "communication": {
-    "channels": ["pipeline", "mcp"],
-    "gracePeriodMs": 30000
-  }
-}
-```
+Try it: `configs/phase6-agent.json` boots the full MCP delegation stack (smoke-tested).
 
-Key concepts:
-- **ICommChannel**: Bidirectional message passing between agents
-- **CommChannelRegistry**: Discover and list connected agent channels
-- **PipelineChannel** plugin: Route messages through a composition pipeline
-- **comm-proxy** plugin: Fault isolation with circuit breaker and bulkhead isolation
-- **openstarry-channel**: Standalone multi-agent hub managing agent registry and health monitoring
-- **ITypedListener**: Map sensory input types (visual, auditory, tactile, olfactory, gustatory) to message handlers
-- **Process Tree**: Parent-child agent relationships tracked automatically
-- **EventBridge**: Federation of events across multi-agent networks
-- **Graceful Shutdown**: Coordinated termination with configurable grace periods (max 300s)
-
-See [Doc 53: Multi-Agent Communication Interface Spec](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md) for detailed protocol documentation.
+**Honest boundary** (per the ledger's explicit non-claims): additional communication subsystems in the codebase — ICommChannel, comm-pipeline, comm-proxy, the openstarry-channel hub, EventBridge — are verification-layer or not wired into the proven path. Treat them as design references, not shipped features. Protocol design notes: [Doc 53](https://github.com/SecludedCorner/openstarry_doc/blob/main/Architecture_Documentation/53_Multi_Agent_Communication_Interface_Spec.md).
 
 ## Available Configurations
 
@@ -263,7 +243,7 @@ Preset configurations are in the `configs/` directory:
 | `mcp-agent.json` | MCP protocol agent | Integration with Claude Code and other MCP clients |
 | `full-agent.json` | All features | Development and demos |
 
-> All configurations load all 6 providers. Change `cognition.provider` and `cognition.model` to switch providers.
+> Preloaded providers vary by config: `basic-agent.json` loads 6; `web/websocket/tui/mcp/full` load 5 (no `provider-lmstudio`); `basic-agent-lmstudio-auto.json` loads 2; `phase6`/`klesha-modulated` load only `provider-claude-cli`. Change `cognition.provider` and `cognition.model` to switch among the loaded providers.
 
 ## Provider Auto-Configuration
 
