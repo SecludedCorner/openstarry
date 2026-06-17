@@ -14,7 +14,10 @@
 
 import { EventEmitter } from 'node:events';
 
-export type AuditEventType = 'capability_denied' | 'ws_connection_denied';
+export type AuditEventType =
+  | 'capability_denied'
+  | 'ws_connection_denied'
+  | 'agent_request_denied';
 
 export interface CapabilityDeniedEvent {
   readonly type: 'capability_denied';
@@ -33,7 +36,27 @@ export interface WsConnectionDeniedEvent {
   readonly timestamp: string;
 }
 
-export type AuditEvent = CapabilityDeniedEvent | WsConnectionDeniedEvent;
+/**
+ * Daemon-side request denial (⑦ Tech Spec 18 / Doc 46). Emitted when the
+ * daemon rejects an inbound request for a policy reason — fail-closed paths
+ * that previously left no audit trail:
+ *   - 'rate_limited': DualRateLimiter rejected an agent.input (-32005).
+ *   - 'spawn_constraint': handleSpawnChild denied an agent.spawnChild
+ *     (DRAINING / path-traversal / capability / depth-budget-ceiling).
+ * `detail` carries the specific sub-reason (e.g. 'DRAINING', 'CEILING_EXCEEDED').
+ */
+export interface AgentRequestDeniedEvent {
+  readonly type: 'agent_request_denied';
+  readonly reason: 'rate_limited' | 'spawn_constraint';
+  readonly agentId: string;
+  readonly detail?: string;
+  readonly timestamp: string;
+}
+
+export type AuditEvent =
+  | CapabilityDeniedEvent
+  | WsConnectionDeniedEvent
+  | AgentRequestDeniedEvent;
 
 export class AuditBus {
   private readonly emitter = new EventEmitter();

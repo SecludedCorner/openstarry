@@ -96,3 +96,19 @@ export const DEFAULT_RATE_LIMIT_PER_AGENT = 100 as const;
 export const DEFAULT_RATE_LIMIT_PER_TARGET = 20 as const;
 /** POLICY: rate limit sliding window duration (ms). */
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 1000 as const;
+
+// ─── Plan38 W3 (AT-1b / AT-5a): Message replay defense ───
+
+/**
+ * MECHANISM: freshness window for inter-agent CommMessages.
+ * A message whose `timestamp` is older than now − MAX_MESSAGE_AGE_MS is rejected
+ * as stale by the MessageRouter (closes AT-5a message-replay). Also bounds the
+ * size of the seen-id replay cache: ids older than this window are pruned.
+ */
+export const MAX_MESSAGE_AGE_MS = 300_000 as const; // 5 minutes
+/**
+ * MECHANISM: tolerated forward clock skew for CommMessage.timestamp.
+ * A message timestamped more than MAX_CLOCK_SKEW_MS in the future is rejected
+ * (prevents future-dating a message to evade the staleness prune; AT-1b).
+ */
+export const MAX_CLOCK_SKEW_MS = 60_000 as const; // 1 minute

@@ -5,7 +5,7 @@
 import type { ManoAggregatorConfig } from "./gear-arbiter.js";
 import type { SafetyMonitorConfig } from "./safety.js";
 import type { VitakkaWatchdogConfig, KleshaFilterConfig, KleshaModulationConfig } from "./klesha.js";
-import type { VedanaEmergencyConfig } from "./vedana.js";
+import type { VedanaEmergencyConfig, VedanaClassificationConfig } from "./vedana.js";
 import type { ExecutionConfig } from "./execution.js";
 import type { SandboxManagerConfig } from "./sandbox-defaults.js";
 
@@ -167,6 +167,12 @@ export interface IAgentConfig {
   vitakka?: Partial<VitakkaWatchdogConfig>;
   /** Vedana emergency configuration override. */
   vedanaEmergency?: Partial<VedanaEmergencyConfig>;
+  /**
+   * Vedana classification thresholds override (Doc 36 §15). Per-agent dukkha/
+   * sukha thresholds for deriving discrete feeling-type from valence. Validated
+   * against the Doc 36 §13 hard safety bounds at start (fail-closed).
+   */
+  vedanaClassification?: Partial<VedanaClassificationConfig>;
 
   // Plan32 Wave 4 (P1): Execution and klesha filter config overrides
   /** Execution loop configuration override. */

@@ -108,14 +108,40 @@ export function toVedanaDimension(vedana: ChannelVedana): VedanaDimension {
 }
 
 /**
+ * Hard safety bounds for VedanaClassificationConfig (Doc 36 §13).
+ * FIXED design constants (not calibrated): they cap how far the thresholds can
+ * be pushed so a config cannot manufacture a "permanent upekkha" state that
+ * silences the internal pain/pleasure feedback (an internal-feedback DoS).
+ * dukkha must stay reachable (≥ -0.5) and sukha must stay reachable (≤ +0.5).
+ * (Doc 36 §13 also names "upekkha bandwidth ≤ 1.0"; that is implied by these two
+ * — max band = 0.5 − (−0.5) = 1.0 — so it needs no separate check.)
+ */
+export const VEDANA_MIN_DUKKHA_THRESHOLD = -0.5;
+export const VEDANA_MAX_SUKHA_THRESHOLD = 0.5;
+
+/**
  * Validate VedanaClassificationConfig.
- * Throws if dukkhaThreshold >= sukhaThreshold.
+ * Throws if dukkhaThreshold >= sukhaThreshold, or if either Doc 36 §13 hard
+ * safety bound is violated (prevents threshold manipulation / DoS).
  */
 export function validateVedanaConfig(config: VedanaClassificationConfig): void {
   if (config.dukkhaThreshold >= config.sukhaThreshold) {
     throw new Error(
       `Invalid VedanaClassificationConfig: dukkhaThreshold (${config.dukkhaThreshold}) ` +
       `must be less than sukhaThreshold (${config.sukhaThreshold})`
+    );
+  }
+  // Doc 36 §13 hard bounds — keep dukkha/sukha reachable (anti-DoS).
+  if (config.dukkhaThreshold < VEDANA_MIN_DUKKHA_THRESHOLD) {
+    throw new Error(
+      `Invalid VedanaClassificationConfig: dukkhaThreshold (${config.dukkhaThreshold}) ` +
+      `must be >= ${VEDANA_MIN_DUKKHA_THRESHOLD} (Doc 36 §13: dukkha must stay reachable)`
+    );
+  }
+  if (config.sukhaThreshold > VEDANA_MAX_SUKHA_THRESHOLD) {
+    throw new Error(
+      `Invalid VedanaClassificationConfig: sukhaThreshold (${config.sukhaThreshold}) ` +
+      `must be <= ${VEDANA_MAX_SUKHA_THRESHOLD} (Doc 36 §13: sukha must stay reachable)`
     );
   }
 }

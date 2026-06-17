@@ -66,6 +66,23 @@ describe("validateVedanaConfig", () => {
       "must be less than"
     );
   });
+
+  // Doc 36 §13 hard safety bounds (prevent force-permanent-upekkha DoS).
+  it("throws when dukkhaThreshold is below the -0.5 hard bound", () => {
+    expect(() => validateVedanaConfig({ dukkhaThreshold: -0.6, sukhaThreshold: 0.1 })).toThrow(
+      /dukkhaThreshold .* must be >= -0\.5/
+    );
+  });
+
+  it("throws when sukhaThreshold is above the +0.5 hard bound", () => {
+    expect(() => validateVedanaConfig({ dukkhaThreshold: -0.1, sukhaThreshold: 0.6 })).toThrow(
+      /sukhaThreshold .* must be <= 0\.5/
+    );
+  });
+
+  it("accepts the boundary values -0.5 / +0.5 (max band 1.0)", () => {
+    expect(() => validateVedanaConfig({ dukkhaThreshold: -0.5, sukhaThreshold: 0.5 })).not.toThrow();
+  });
 });
 
 describe("VedanaDimension", () => {

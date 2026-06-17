@@ -70,6 +70,11 @@ export type {
   DaemonSpawnChildInput,
   DaemonSpawnChildResult,
 } from "./types/daemon-spawn.js";
+export type {
+  IDaemonIntrospectService,
+  DaemonChildAgentInfo,
+  DaemonProcessTreeNode,
+} from "./types/daemon-introspect.js";
 export type { ICognitionConfigService } from "./types/cognition.js";
 
 export type {
@@ -548,4 +553,7 @@ export {
   DEFAULT_RATE_LIMIT_PER_AGENT,
   DEFAULT_RATE_LIMIT_PER_TARGET,
   DEFAULT_RATE_LIMIT_WINDOW_MS,
+  // Plan38 W3 (AT-1b / AT-5a) — message replay defense
+  MAX_MESSAGE_AGE_MS,
+  MAX_CLOCK_SKEW_MS,
 } from "./constants.js";

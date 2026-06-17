@@ -4,6 +4,8 @@
  * FROZEN: These interfaces must not be modified without Spec Addendum.
  */
 
+import type { SessionIndexEntry } from "./session-persistence.js";
+
 /**
  * Options for spawning a daemon process.
  * FROZEN: Implementations must use exactly these fields.
@@ -442,4 +444,9 @@ export interface IDaemonControlPlane {
   ): Promise<DaemonSpawnResult>;
   getProcessTree(): Promise<ProcessTreeNode[]>;
   getChildAgents(parentId: string): Promise<AgentRegistryEntry[]>;
+
+  // New method — Doc 26 (v0.59.7-alpha): enumerate persisted sessions for the
+  // daemon's agent. Backs the `agent.list-sessions` RPC and the `/session list`
+  // REPL command. Producer: FileSessionPersistence.listSessions (read-only).
+  listSessions(): Promise<SessionIndexEntry[]>;
 }

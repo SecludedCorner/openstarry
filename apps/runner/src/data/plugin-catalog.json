@@ -170,6 +170,20 @@
       "tags": ["context", "sliding-window", "required"]
     },
     {
+      "name": "@openstarry-plugin/context-keyword-retrieval",
+      "description": "Relevance-aware context manager — keeps recent turns plus top-K older turns most lexically relevant to the latest user message (in-memory, deterministic)",
+      "version": "0.1.0-alpha",
+      "aggregates": ["IContextManager"],
+      "tags": ["context", "retrieval", "relevance"]
+    },
+    {
+      "name": "@openstarry-plugin/agent-introspect",
+      "description": "Read-only in-loop tools (agent.listChildren / agent.processTree) for an agent to observe its child agents (daemon mode only)",
+      "version": "0.1.0-alpha",
+      "aggregates": ["ITool"],
+      "tags": ["agent", "introspection", "daemon"]
+    },
+    {
       "name": "@openstarry-plugin/monitor-loop-quality",
       "description": "4D loop quality monitor (coherence/efficiency/convergence/stability)",
       "version": "0.32.0",

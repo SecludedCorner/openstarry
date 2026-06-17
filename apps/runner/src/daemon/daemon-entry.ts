@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Socket } from "node:net";
-import type { IAgentConfig, InputEvent, ISeed, IDaemonSpawnService } from "@openstarry/sdk";
+import type { IAgentConfig, InputEvent, ISeed, IDaemonSpawnService, IDaemonIntrospectService, DaemonChildAgentInfo, DaemonProcessTreeNode } from "@openstarry/sdk";
 import { DEFAULT_AGENT_GRACE_PERIOD_MS, MAX_AGENT_GRACE_PERIOD_MS, SERVICE_KEYS, SpawnDeniedError } from "@openstarry/sdk";
 import { createAgentCore, isPathSafe } from "@openstarry/core";
 import { validateSpawnConstraints, computeAgentDepth } from "./spawn-validator.js";
@@ -40,6 +40,8 @@ import { MessageRouter } from "./message-router.js";
 import { EventBridge } from "./event-bridge.js";
 import { GlobalServiceRegistry } from "./global-service-registry.js";
 import { verifyAgentIdentity, removePidIdentity } from "./pid-identity.js";
+import { createObservability, type Observability } from "../observability.js";
+import { isoTimestamp } from "../audit-infra/iso-timestamp.js";
 
 /**
  * Daemon context holds all daemon state.
@@ -61,6 +63,16 @@ interface DaemonContext {
 }
 
 let ctx: DaemonContext | null = null;
+/**
+ * ⑦ Observability (Tech Spec 18 / Doc 46) — daemon-side structured-log +
+ * denial audit. Opt-in: createObservability() yields null log/auditBus unless
+ * OPENSTARRY_LOG_PATH / OPENSTARRY_AUDIT (or AUDIT_SINK_PATH) are set, so the
+ * lifecycle-log and denial-publish call sites are no-ops by default (zero
+ * behavior change). Until this wire-in the daemon had NO observability at all —
+ * rate-limit and spawn-constraint denials left no audit trail despite being
+ * fail-closed security paths, and daemon lifecycle was console.error only.
+ */
+let obs: Observability | null = null;
 let shuttingDown = false;
 let eventForwarderUnsub: (() => void) | null = null;
 
@@ -202,6 +214,22 @@ async function main(): Promise<void> {
     };
     core.serviceRegistry.register(spawnService);
 
+    // 3.7 Register the read-only introspection service (Doc 11) so the
+    // agent-introspect plugin's tools can enumerate this agent's children and
+    // the process tree via SERVICE_KEYS.DAEMON_INTROSPECT. Read-only — no
+    // spawn/kill here. Backed by the existing processTree/childAgents handlers.
+    const introspectService: IDaemonIntrospectService = {
+      name: "daemon-introspect",
+      version: "1.0.0",
+      async listChildren(parentAgentId: string): Promise<DaemonChildAgentInfo[]> {
+        return handleChildAgents({ parentId: parentAgentId }).map(toChildAgentInfo);
+      },
+      async processTree(): Promise<DaemonProcessTreeNode[]> {
+        return handleProcessTree().map((n) => toIntrospectTreeNode(n, 0));
+      },
+    };
+    core.serviceRegistry.register(introspectService);
+
     // 4. Load plugins
     const pluginResult = await resolvePlugins(config, false, null);
     for (const plugin of pluginResult.plugins) {
@@ -221,6 +249,10 @@ async function main(): Promise<void> {
       config.session?.persistence?.maxHistorySize ?? 1000
     );
     console.error(`[daemon] Session persistence initialized`);
+
+    // 6.5 ⑦ Observability — opt-in daemon structured-log + denial audit.
+    // No-op when env unset; flushed in shutdown() via obs.flush().
+    obs = createObservability();
 
     // 7. Setup signal handlers BEFORE starting anything
     // (hmacKeyHex now read at step 3.5, before plugin loading — TENET-2026-06-11)
@@ -277,6 +309,7 @@ async function main(): Promise<void> {
       exposedTools: config.communication?.exposedTools ?? [],
     });
     console.error(`[daemon] Root agent registered in process tree`);
+    obs?.log?.info("agent:registered", { agentId, pid: process.pid, role: "root" });
 
     // 10. Initialize event forwarder (bridge core.bus to IPC)
     eventForwarderUnsub = initEventForwarder(core.bus, ipcServer, agentId);
@@ -298,6 +331,12 @@ async function main(): Promise<void> {
     console.error(`[daemon] Session cleanup task started (TTL: ${idleTTL}s)`);
 
     console.error(`[daemon] Daemon fully initialized and running`);
+    obs?.log?.info("daemon:started", {
+      agentId,
+      pid: process.pid,
+      version: config.identity.version,
+      socketPath,
+    });
 
   } catch (err) {
     console.error(`[daemon] Startup failed: ${err}`);
@@ -358,6 +397,12 @@ async function handleRPCRequest(req: RPCRequest, socket: Socket): Promise<unknow
 
     case "agent.list-clients":
       return handleListClients();
+
+    case "agent.list-sessions":
+      // Doc 26 (v0.59.7-alpha): enumerate persisted sessions for this agent.
+      // Read-only; producer FileSessionPersistence.listSessions rebuilds the
+      // index from disk when the in-memory index file is missing.
+      return ctx.persistence.listSessions(ctx.agentId);
 
     case "agent.spawnChild":
       return handleSpawnChild(req.params as { parentId: string; childConfig: ChildAgentSpawnConfig });
@@ -600,6 +645,13 @@ async function handleInput(msg: InputMessage): Promise<{ success: boolean }> {
     inputRateLimiter.check(ctx.agentId, msg.sessionId);
   } catch (err: unknown) {
     if (err instanceof RateLimitError) {
+      // ⑦ denial audit: a rate-limited input is a fail-closed rejection — journal it.
+      obs?.publishAgentRequestDenied({
+        reason: 'rate_limited',
+        agentId: ctx.agentId,
+        detail: `${err.limitType}:${msg.sessionId}`,
+        timestamp: isoTimestamp(),
+      });
       throw {
         code: RATE_LIMITED_RPC_CODE,
         message: err.message,
@@ -733,11 +785,25 @@ async function handleSpawnChild(
 
   const { parentId, childConfig } = params;
 
+  // ⑦ denial audit: every fail-closed spawn rejection is journaled with its
+  // specific sub-reason. Covers all denial paths below (DRAINING / path /
+  // capability / depth-budget-ceiling), not just one — a denial-audit that
+  // logged a single reason would be misleading.
+  const auditSpawnDenied = (detail: string): void => {
+    obs?.publishAgentRequestDenied({
+      reason: 'spawn_constraint',
+      agentId: parentId,
+      detail,
+      timestamp: isoTimestamp(),
+    });
+  };
+
   // Permission lattice: check parent exists in registry
   const parentEntry = agentRegistry.get(parentId);
 
   // Drain evasion prevention (Rule #35): DRAINING parent MUST NOT spawn children
   if (parentEntry && parentEntry.status === 'draining') {
+    auditSpawnDenied('DRAINING');
     throw {
       code: Plan37RPCErrorCode.PARENT_DRAINING,
       message: `Parent agent "${parentId}" is DRAINING. Cannot spawn child agents.`,
@@ -757,6 +823,7 @@ async function handleSpawnChild(
       const realConfigPath = realpathSync(childConfig.configPath);
       const parentConfigDir = parentEntry ? dirname(parentEntry.configPath) : (ctx?.configPath ? dirname(ctx.configPath) : '');
       if (parentConfigDir && !isPathSafe(parentConfigDir, realConfigPath)) {
+        auditSpawnDenied('PATH_TRAVERSAL');
         throw {
           code: Plan37RPCErrorCode.PERMISSION_LATTICE_VIOLATION,
           message: `SEC-003: configPath "${childConfig.configPath}" resolves outside parent scope`,
@@ -767,6 +834,7 @@ async function handleSpawnChild(
       if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === Plan37RPCErrorCode.PERMISSION_LATTICE_VIOLATION) {
         throw err;
       }
+      auditSpawnDenied('PATH_UNRESOLVABLE');
       throw {
         code: RPCErrorCode.INVALID_PARAMS,
         message: `SEC-003: configPath "${childConfig.configPath}" cannot be resolved`,
@@ -785,6 +853,7 @@ async function handleSpawnChild(
   const childCommCaps = { canSendTo: [], canReceiveFrom: [], exposedTools: [] };
   const capResult = messageRouter.validateChildCapabilities(parentCommCaps, childCommCaps);
   if (!capResult.allowed) {
+    auditSpawnDenied(`CAPABILITY_VIOLATION:${capResult.reason ?? ''}`);
     throw {
       code: Plan37RPCErrorCode.PERMISSION_LATTICE_VIOLATION,
       message: `Capability validation failed: ${capResult.reason}`,
@@ -816,6 +885,7 @@ async function handleSpawnChild(
       });
     } catch (err: unknown) {
       if (err instanceof SpawnDeniedError) {
+        auditSpawnDenied(err.reason);
         throw {
           code: Plan37RPCErrorCode.PERMISSION_LATTICE_VIOLATION,
           message: err.message,
@@ -880,8 +950,38 @@ async function handleSpawnChild(
   }
 
   console.error(`[daemon] Spawned child agent ${childConfig.agentId} (pid: ${result.pid}) under parent ${parentId}`);
+  obs?.log?.info("agent:registered", {
+    agentId: childConfig.agentId,
+    pid: result.pid,
+    parentId,
+    role: "child",
+  });
 
   return result;
+}
+
+/** Map a daemon-internal registry entry to the SDK introspection summary. */
+function toChildAgentInfo(e: AgentRegistryEntry): DaemonChildAgentInfo {
+  return {
+    agentId: e.agentId,
+    pid: e.pid,
+    status: e.status,
+    configPath: e.configPath,
+    uptime: e.uptime,
+    childAgentIds: e.childAgentIds,
+    ...(e.parentAgentId !== undefined ? { parentAgentId: e.parentAgentId } : {}),
+  };
+}
+
+/** Map a daemon-internal process-tree node to the SDK introspection node. */
+function toIntrospectTreeNode(n: ProcessTreeNode, depth: number): DaemonProcessTreeNode {
+  return {
+    agentId: n.entry.agentId,
+    pid: n.entry.pid,
+    status: n.entry.status,
+    depth,
+    children: n.children.map((c) => toIntrospectTreeNode(c, depth + 1)),
+  };
 }
 
 /**
@@ -1023,9 +1123,11 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
 
   console.error(`[daemon] Received ${signal}, shutting down...`);
+  obs?.log?.info("daemon:shutdown", { signal, agentId: ctx?.agentId ?? null });
 
   if (!ctx) {
     console.error("[daemon] Context not initialized, exiting immediately");
+    await obs?.flush("programmatic");
     process.exit(0);
   }
 
@@ -1077,6 +1179,7 @@ async function shutdown(signal: string): Promise<void> {
       messageRouter.deregisterAgent(entry.agentId);
       agentGracePeriods.delete(entry.agentId);
       removePidIdentity(entry.pid, pidToAgentMap);
+      obs?.log?.info("agent:deregistered", { agentId: entry.agentId, reason: "cascade" });
     };
     const shutdownLattice = new PermissionLattice(agentRegistry, terminateChildEntry);
     for (const entry of [...agentRegistry.values()]) {
@@ -1109,6 +1212,12 @@ async function shutdown(signal: string): Promise<void> {
     // Cleanup PID file
     pidManager.deletePid(ctx.pidFile);
     console.error("[daemon] PID file removed");
+
+    // ⑦ Flush observability buffers (structured-log 200 → audit-sink 300) so
+    // lifecycle + denial records reach disk before exit. No-op when disabled.
+    await obs?.flush(
+      signal === "SIGTERM" ? "SIGTERM" : signal === "SIGINT" ? "SIGINT" : "programmatic"
+    );
 
     console.error("[daemon] Shutdown complete");
     process.exit(0);
@@ -1156,6 +1265,7 @@ const _controlPlane: IDaemonControlPlane = {
   spawnChildAgent: (parentId, childConfig) => handleSpawnChild({ parentId, childConfig }),
   getProcessTree: async () => handleProcessTree(),
   getChildAgents: async (parentId: string) => handleChildAgents({ parentId }),
+  listSessions: async () => (ctx ? ctx.persistence.listSessions(ctx.agentId) : []),
 };
 // Prevent tree-shaking from removing the verification object.
 void _controlPlane;

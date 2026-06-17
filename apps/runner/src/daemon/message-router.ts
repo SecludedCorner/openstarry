@@ -1,5 +1,11 @@
 import type { CommMessage } from "@openstarry/sdk";
-import { MAX_TRACE_DEPTH, MAX_COMM_METADATA_ENTRIES, MAX_COMM_METADATA_VALUE_SIZE } from "@openstarry/sdk";
+import {
+  MAX_TRACE_DEPTH,
+  MAX_COMM_METADATA_ENTRIES,
+  MAX_COMM_METADATA_VALUE_SIZE,
+  MAX_MESSAGE_AGE_MS,
+  MAX_CLOCK_SKEW_MS,
+} from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 
 const logger = createLogger("MessageRouter");
@@ -25,6 +31,14 @@ export interface AgentCommCapabilities {
  */
 export class MessageRouter {
   private capabilities: Map<string, AgentCommCapabilities> = new Map();
+
+  /**
+   * Replay-defense cache: message id -> timestamp (ms). An id is recorded only
+   * when a message is fully ACCEPTED, and pruned once older than
+   * MAX_MESSAGE_AGE_MS. A repeat of a recorded id is rejected as a replay
+   * (AT-1b / AT-5a). The freshness window bounds this map's size.
+   */
+  private seenMessageIds: Map<string, number> = new Map();
 
   /** Register an agent's communication capabilities (called at agent start). */
   registerAgent(agentId: string, caps: AgentCommCapabilities): void {
@@ -57,8 +71,19 @@ export class MessageRouter {
       return { allowed: false, reason: `Sender ${senderId} not registered` };
     }
 
+    // AT-1b / AT-5a: message replay + freshness defense (fail-closed).
+    // Reject stale / future-dated / duplicate-id messages BEFORE the broadcast
+    // short-circuit so broadcasts are protected too. Does not record yet —
+    // an accepted id is recorded at the allow point so denied messages do not
+    // pollute the cache.
+    const replay = this.checkReplay(message);
+    if (!replay.allowed) {
+      return replay;
+    }
+
     // No target = broadcast (allowed if sender is registered).
     if (!receiverId) {
+      this.markSeen(message);
       return { allowed: true };
     }
 
@@ -116,7 +141,59 @@ export class MessageRouter {
       return { allowed: false, reason: `Receiver ${receiverId} does not accept from ${senderId}` };
     }
 
+    this.markSeen(message);
     return { allowed: true };
+  }
+
+  /**
+   * AT-1b / AT-5a replay + freshness check (pure lookup — does not record).
+   * Fail-closed: a malformed timestamp/id, a stale or future-dated message, or
+   * a previously-seen id is rejected.
+   */
+  private checkReplay(message: CommMessage): MessageRouteResult {
+    const now = Date.now();
+    this.pruneSeen(now);
+
+    const ts = message.timestamp;
+    if (typeof ts !== 'number' || !Number.isFinite(ts)) {
+      return { allowed: false, reason: `message.timestamp must be a finite number, got ${ts}` };
+    }
+    if (now - ts > MAX_MESSAGE_AGE_MS) {
+      return {
+        allowed: false,
+        reason: `message is stale (age ${now - ts}ms exceeds MAX_MESSAGE_AGE_MS ${MAX_MESSAGE_AGE_MS}ms)`,
+      };
+    }
+    if (ts - now > MAX_CLOCK_SKEW_MS) {
+      return {
+        allowed: false,
+        reason: `message timestamp is ${ts - now}ms in the future, exceeds MAX_CLOCK_SKEW_MS ${MAX_CLOCK_SKEW_MS}ms`,
+      };
+    }
+
+    const id = message.id;
+    if (typeof id !== 'string' || id.length === 0) {
+      return { allowed: false, reason: `message.id must be a non-empty string for replay defense` };
+    }
+    if (this.seenMessageIds.has(id)) {
+      return { allowed: false, reason: `replayed message id '${id}' rejected (AT-1b/AT-5a)` };
+    }
+
+    return { allowed: true };
+  }
+
+  /** Record an accepted message id for replay defense. */
+  private markSeen(message: CommMessage): void {
+    this.seenMessageIds.set(message.id, message.timestamp);
+  }
+
+  /** Drop seen ids older than the freshness window to bound memory. */
+  private pruneSeen(now: number): void {
+    for (const [id, ts] of this.seenMessageIds) {
+      if (now - ts > MAX_MESSAGE_AGE_MS) {
+        this.seenMessageIds.delete(id);
+      }
+    }
   }
 
   /** Validate child ⊆ parent capability constraint at spawn time (MECHANISM). */

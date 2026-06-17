@@ -24,6 +24,7 @@ import { pidManager } from "../daemon/pid-manager.js";
 import { IPCClientImpl } from "../daemon/ipc-client.js";
 import { getDefaultSocketPath } from "../daemon/platform.js";
 import type { AttachResult, InputMessage, DetachMessage } from "../daemon/types.js";
+import type { SessionIndexEntry } from "../daemon/session-persistence.js";
 import type { OutputEvent, ToolEvent, LoopEvent, ReplayEvent } from "../daemon/attach-types.js";
 import { DaemonStartCommand } from "./daemon-start.js";
 
@@ -401,7 +402,7 @@ export class AttachCommand implements CliCommand {
 
     switch (subcommand) {
       case "list":
-        console.log("Session list command not yet implemented.");
+        await this.listSessions();
         break;
 
       case "switch":
@@ -426,6 +427,53 @@ export class AttachCommand implements CliCommand {
 
       default:
         console.error(`Unknown session command: ${subcommand}`);
+    }
+  }
+
+  /**
+   * /session list — enumerate persisted sessions via the agent.list-sessions
+   * RPC (Doc 26). Read-only; the daemon delegates to
+   * FileSessionPersistence.listSessions. The current session is marked with '*'.
+   */
+  private async listSessions(): Promise<void> {
+    if (!this.client) {
+      console.error("Not connected to daemon.");
+      return;
+    }
+
+    let sessions: SessionIndexEntry[];
+    try {
+      sessions = (await this.client.call("agent.list-sessions")) as SessionIndexEntry[];
+    } catch (err) {
+      console.error(`Error: Failed to list sessions: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    if (!sessions || sessions.length === 0) {
+      console.log("No persisted sessions.");
+      return;
+    }
+
+    // Most-recently-updated first.
+    const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+
+    console.log("  SESSION ID                        MESSAGES  UPDATED");
+    for (const s of sorted) {
+      const marker = s.id === this.sessionId ? "*" : " ";
+      const updated = this.formatTimestamp(s.updatedAt);
+      console.log(
+        `${marker} ${s.id.padEnd(33)} ${String(s.messageCount).padEnd(8)} ${updated}`
+      );
+    }
+    console.log(`\n${sorted.length} session(s). '*' = current.`);
+  }
+
+  /** Format an epoch-ms timestamp as an ISO string (best-effort). */
+  private formatTimestamp(ms: number): string {
+    try {
+      return new Date(ms).toISOString();
+    } catch {
+      return String(ms);
     }
   }
 

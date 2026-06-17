@@ -44,12 +44,15 @@ export class ServiceKey<T extends IPluginService> {
 import type { ICognitionConfigService } from "./cognition.js";
 import type { IDistributedAlaya } from "./distributed-alaya.js";
 import type { IDaemonSpawnService } from "./daemon-spawn.js";
+import type { IDaemonIntrospectService } from "./daemon-introspect.js";
 
 export const SERVICE_KEYS = {
   COGNITION_CONFIG: new ServiceKey<ICognitionConfigService>("cognition-config"),
   DISTRIBUTED_ALAYA: new ServiceKey<IDistributedAlaya & IPluginService>("distributed-alaya"),
   /** Runtime child-spawn capability — registered by the daemon (ledger #10). */
   DAEMON_SPAWN: new ServiceKey<IDaemonSpawnService>("daemon-spawn"),
+  /** Read-only process-tree introspection — registered by the daemon (Doc 11). */
+  DAEMON_INTROSPECT: new ServiceKey<IDaemonIntrospectService>("daemon-introspect"),
 } as const;
 
 /**

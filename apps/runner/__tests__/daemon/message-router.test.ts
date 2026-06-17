@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageRouter } from "../../src/daemon/message-router.js";
 import type { AgentCommCapabilities } from "../../src/daemon/message-router.js";
-import { MAX_TRACE_DEPTH } from "@openstarry/sdk";
+import { MAX_TRACE_DEPTH, MAX_MESSAGE_AGE_MS, MAX_CLOCK_SKEW_MS } from "@openstarry/sdk";
 import type { CommMessage } from "@openstarry/sdk";
 
 function makeMessage(source: string, target: string | undefined, traceDepth?: number): CommMessage {
@@ -112,6 +112,71 @@ describe("C11 — MessageRouter (Plan37, D2-R5)", () => {
       it("allows message without traceDepth field", () => {
         const result = router.validateMessage(makeMessage("agent-a", "agent-b"));
         expect(result.allowed).toBe(true);
+      });
+    });
+
+    describe("AT-1b / AT-5a — replay + freshness defense", () => {
+      beforeEach(() => {
+        router.registerAgent("agent-a", agentACaps);
+        router.registerAgent("agent-b", agentBCaps);
+      });
+
+      function msg(id: string, timestamp: number, target: string | undefined = "agent-b"): CommMessage {
+        return { id, source: "agent-a", target, performative: "inform", payload: {}, timestamp };
+      }
+
+      it("allows a fresh, unique message", () => {
+        expect(router.validateMessage(msg("uniq-1", Date.now())).allowed).toBe(true);
+      });
+
+      it("rejects a replayed message id (same id seen twice)", () => {
+        const id = "replay-1";
+        const ts = Date.now();
+        expect(router.validateMessage(msg(id, ts)).allowed).toBe(true);
+        const second = router.validateMessage(msg(id, ts));
+        expect(second.allowed).toBe(false);
+        expect(second.reason).toMatch(/replayed message id/);
+      });
+
+      it("rejects a stale message (older than MAX_MESSAGE_AGE_MS)", () => {
+        const result = router.validateMessage(msg("stale-1", Date.now() - (MAX_MESSAGE_AGE_MS + 5000)));
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toMatch(/stale/);
+      });
+
+      it("rejects a future-dated message (beyond MAX_CLOCK_SKEW_MS)", () => {
+        const result = router.validateMessage(msg("future-1", Date.now() + (MAX_CLOCK_SKEW_MS + 5000)));
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toMatch(/future/);
+      });
+
+      it("rejects a message with an empty id", () => {
+        const result = router.validateMessage(msg("", Date.now()));
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toMatch(/non-empty string/);
+      });
+
+      it("rejects a non-finite timestamp", () => {
+        const result = router.validateMessage(msg("nan-1", Number.NaN));
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toMatch(/finite number/);
+      });
+
+      it("protects broadcasts from replay too", () => {
+        const m = msg("bcast-1", Date.now(), undefined);
+        expect(router.validateMessage(m).allowed).toBe(true);
+        expect(router.validateMessage(m).allowed).toBe(false);
+      });
+
+      it("does not record the id of a capability-denied message (no cache pollution)", () => {
+        const id = "denied-then-allowed";
+        const ts = Date.now();
+        // Denied: target not registered -> rejected after the replay check, NOT recorded.
+        const denied = router.validateMessage(msg(id, ts, "nope"));
+        expect(denied.allowed).toBe(false);
+        // Same id reused for a valid send -> still allowed (denied msg left no trace).
+        const ok = router.validateMessage(msg(id, ts, "agent-b"));
+        expect(ok.allowed).toBe(true);
       });
     });
   });

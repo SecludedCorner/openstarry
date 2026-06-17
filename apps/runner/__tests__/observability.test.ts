@@ -77,6 +77,58 @@ describe("createObservability — audit-sink journaling", () => {
     expect(record.audit_key).toBeDefined();
   });
 
+  it("⑦ journals agent_request_denied through publishAgentRequestDenied → file on flush", async () => {
+    const dir = makeTempDir();
+    const auditPath = join(dir, "audit-trail.jsonl");
+    const obs = createObservability({ auditPath });
+
+    obs.publishAgentRequestDenied({
+      reason: "rate_limited",
+      agentId: "agent-x",
+      detail: "session:s1",
+      timestamp: new Date().toISOString(),
+    });
+    obs.publishAgentRequestDenied({
+      reason: "spawn_constraint",
+      agentId: "agent-x",
+      detail: "CEILING_EXCEEDED",
+      timestamp: new Date().toISOString(),
+    });
+
+    await obs.flush();
+
+    const lines = readFileSync(auditPath, "utf-8").trim().split("\n");
+    expect(lines.length).toBe(2);
+    const records = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(records.map((r) => r.type)).toEqual([
+      "agent_request_denied",
+      "agent_request_denied",
+    ]);
+    expect(records.map((r) => r.reason)).toEqual(["rate_limited", "spawn_constraint"]);
+    expect(records[0].agentId).toBe("agent-x");
+  });
+
+  it("⑦ publishAgentRequestDenied is a no-op when audit sink disabled", () => {
+    const prevAudit = process.env["OPENSTARRY_AUDIT"];
+    const prevSinkPath = process.env["AUDIT_SINK_PATH"];
+    delete process.env["OPENSTARRY_AUDIT"];
+    delete process.env["AUDIT_SINK_PATH"];
+    try {
+      const obs = createObservability();
+      expect(obs.auditBus).toBeNull();
+      // Must not throw when disabled.
+      obs.publishAgentRequestDenied({
+        reason: "rate_limited",
+        agentId: "a",
+        detail: "x",
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      if (prevAudit !== undefined) process.env["OPENSTARRY_AUDIT"] = prevAudit;
+      if (prevSinkPath !== undefined) process.env["AUDIT_SINK_PATH"] = prevSinkPath;
+    }
+  });
+
   it("dedupes identical events within the dedup window", async () => {
     const dir = makeTempDir();
     const auditPath = join(dir, "audit-trail.jsonl");

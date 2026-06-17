@@ -30,7 +30,7 @@
  */
 
 import { AuditBus, AuditSink } from "./audit-sink/index.js";
-import type { CapabilityDeniedEvent } from "./audit-sink/index.js";
+import type { CapabilityDeniedEvent, AgentRequestDeniedEvent } from "./audit-sink/index.js";
 import {
   StructuredLogWriter,
   resolveLogPath,
@@ -52,6 +52,8 @@ export interface Observability {
   readonly shutdown: ShutdownHookRegistry;
   /** Publish a capability-denied audit event (no-op when sink disabled). */
   publishCapabilityDenied(event: Omit<CapabilityDeniedEvent, "type">): void;
+  /** Publish an agent-request-denied audit event (no-op when sink disabled). */
+  publishAgentRequestDenied(event: Omit<AgentRequestDeniedEvent, "type">): void;
   /** Run the flush cascade. Safe to call multiple times. */
   flush(reason?: ShutdownReason): Promise<void>;
 }
@@ -105,6 +107,9 @@ export function createObservability(opts: ObservabilityOptions = {}): Observabil
     shutdown: registry,
     publishCapabilityDenied(event) {
       auditBus?.publish({ type: "capability_denied", ...event });
+    },
+    publishAgentRequestDenied(event) {
+      auditBus?.publish({ type: "agent_request_denied", ...event });
     },
     async flush(reason: ShutdownReason = "programmatic") {
       await registry.trigger(reason);

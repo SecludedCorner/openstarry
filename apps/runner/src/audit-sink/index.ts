@@ -16,6 +16,7 @@ export type {
   AuditEventType,
   CapabilityDeniedEvent,
   WsConnectionDeniedEvent,
+  AgentRequestDeniedEvent,
 } from './audit-bus.js';
 
 export { DedupeWindow, dedupeKey, hashEvent } from './dedupe.js';

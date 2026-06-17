@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe('AuditSink (C48-M2)', () => {
-  it('C48-M2a: attach subscribes to both audit event types', () => {
+  it('C48-M2a: attach subscribes to all audit event types', () => {
     const bus = new AuditBus();
     const { sinkFn } = capture();
     const sink = new AuditSink({ bus, sinkFn });
@@ -38,8 +38,10 @@ describe('AuditSink (C48-M2)', () => {
     sink.attach();
     expect(bus.listenerCount('capability_denied')).toBe(1);
     expect(bus.listenerCount('ws_connection_denied')).toBe(1);
+    expect(bus.listenerCount('agent_request_denied')).toBe(1);
     sink.detach();
     expect(bus.listenerCount('capability_denied')).toBe(0);
+    expect(bus.listenerCount('agent_request_denied')).toBe(0);
   });
 
   it('C48-M2c: capability_denied event is journaled', () => {
@@ -77,6 +79,57 @@ describe('AuditSink (C48-M2)', () => {
     const parsed = JSON.parse(lines[0]);
     expect(parsed.type).toBe('ws_connection_denied');
     expect(parsed.reason).toBe('origin_blocked');
+  });
+
+  it('⑦ agent_request_denied event is journaled (rate_limited + spawn_constraint)', () => {
+    const bus = new AuditBus();
+    const { sinkFn, lines } = capture();
+    const sink = new AuditSink({ bus, sinkFn });
+    sink.attach();
+    bus.publish({
+      type: 'agent_request_denied',
+      reason: 'rate_limited',
+      agentId: 'agent-1',
+      detail: 'session:s1',
+      timestamp: ts,
+    });
+    bus.publish({
+      type: 'agent_request_denied',
+      reason: 'spawn_constraint',
+      agentId: 'agent-1',
+      detail: 'CEILING_EXCEEDED',
+      timestamp: ts,
+    });
+    sink.flushSync();
+    expect(lines.length).toBe(2);
+    const a = JSON.parse(lines[0]);
+    const b = JSON.parse(lines[1]);
+    expect(a.type).toBe('agent_request_denied');
+    expect(a.reason).toBe('rate_limited');
+    expect(a.agentId).toBe('agent-1');
+    expect(b.reason).toBe('spawn_constraint');
+    expect(b.detail).toBe('CEILING_EXCEEDED');
+    // Distinct reason/detail ⇒ distinct dedupe keys ⇒ both journaled.
+    expect(a.audit_key).not.toBe(b.audit_key);
+  });
+
+  it('⑦ identical agent_request_denied events are deduped', () => {
+    const bus = new AuditBus();
+    const { sinkFn, lines } = capture();
+    const sink = new AuditSink({ bus, sinkFn });
+    sink.attach();
+    const event = {
+      type: 'agent_request_denied' as const,
+      reason: 'spawn_constraint' as const,
+      agentId: 'agent-1',
+      detail: 'DRAINING',
+      timestamp: ts,
+    };
+    bus.publish(event);
+    bus.publish(event);
+    sink.flushSync();
+    expect(lines.length).toBe(1);
+    expect(sink.stats().duplicates).toBe(1);
   });
 
   it('C48-M2b: duplicate (timestamp + hash) events are deduped', () => {

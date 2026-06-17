@@ -1,5 +1,101 @@
 # CHANGELOG
 
+## [v0.59.7-alpha] — 2026-06-16 — buildable_now batch: build the genuinely-buildable doc gaps
+
+A doc-vs-code buildable-gap study (8 dimensions, 39 findings, strict
+no-dead-code/no-inflation triage) classified the unbuilt-but-documented surface
+into buildable_now / needs_architecture / bounded_by_design / should_stay_fiction.
+This release lands the **7 buildable_now** items — each with a real producer +
+consumer touchpoint, a passing test, and the corresponding doc flipped to LANDED.
+Items lacking architectural prerequisites stay honestly stubbed (NOT built).
+A subsequent pre-push doc-vs-code honesty audit (below) closed 5 silent-fiction
+gaps, fixed a latent bug in the default context manager, and added tests to the
+6 previously-untested plugins. Verified: **314 test files / 3290 passed / 0
+failed / 4 skipped**; build clean; purity PASS; cold smoke PASS. Plugin counts
+unchanged at 46 loadable / 47 packages.
+
+### New features (doc gap → landed by building)
+- **`workflow:status` ITool** (Doc 12): workflow-engine exposes persisted
+  execution status as a queryable tool (disk-backed getStatus). +4 tests.
+- **`@openstarry-plugin/context-keyword-retrieval`** (new plugin): IContextManager
+  with keyword + recency retrieval. +7 tests.
+- **`@openstarry-plugin/agent-introspect`** (new plugin): `agent.listChildren` /
+  `agent.processTree` tools via the new `SERVICE_KEYS.DAEMON_INTROSPECT` daemon
+  service (read-only). +4 tests.
+- **Per-agent `VedanaClassificationConfig` wiring** (Doc 36 §13): per-agent
+  classification config + a calibration-independent hard safety bound. +4 tests.
+- **`ps --tree`** (Doc 13): CLI renders the cross-daemon agent process hierarchy
+  via the existing `agent.processTree` RPC, indented by depth; child daemons
+  folded under their parent. Read-only. +7 tests.
+- **`/session list` + `agent.list-sessions` RPC** (Doc 26): attach REPL's
+  `/session list` was a stub — now wired to a read-only RPC backed by
+  `FileSessionPersistence.listSessions`; `IDaemonControlPlane.listSessions`
+  completeness is compile-enforced. +5 tests.
+- **Daemon denial-audit + lifecycle structured-log** (Tech Spec 18 / Doc 54):
+  the background daemon had no observability — fail-closed rate-limit and
+  spawn-constraint denials left no audit trail, lifecycle was console-only.
+  New `agent_request_denied` audit event (rate_limited / spawn_constraint) +
+  daemon:started / agent:registered / agent:deregistered / daemon:shutdown
+  structured-log records, flushed at shutdown. Opt-in (env), no-op by default.
+  +4 unit tests + 1 real-daemon e2e.
+
+### Honest scope (NOT built — would have been dead code)
+- DeepDive 07 DLQ/restart/hydration (no production message buffer / child-process
+  supervision), §10 transport dual-registration (write-only registry), AT-1c/5b/4a
+  (no cross-process message transport), RAG engine / workflow node executors /
+  daemon supervisor / hot-reload (fiction), two-tier klesha / logprobToVedana
+  (bounded by design) — all remain honestly marked, not stubbed-in. AT-4c
+  (audit-log access) stays PARTIAL (file-permission only).
+
+### Pre-push doc-vs-code honesty audit + hardening (2026-06-17)
+A full-corpus audit (overclaim + silent-fiction hunt across 198 active docs)
+confirmed the TENETS ledger and crown-jewel docs are honest (0 overclaim), and
+closed the real gaps it found:
+- **Bugfix — default context manager** (`context-sliding-window`): the sliding
+  window kept an orphaned assistant/tool message from the oldest *dropped* turn
+  (`cutIndex = i + 1` overwrote the already-correct cut), violating the documented
+  "turn pair" contract. Surfaced by the first-ever test for this default component.
+- **Test coverage**: added genuine tests to the 6 previously-untested plugins —
+  `context-sliding-window`, `auditor-passthrough`, `standard-function-fs` (incl.
+  path-traversal SECURITY assertions), `standard-core-commands`, `monitor-loop-quality`,
+  `provider-gemini-oauth` (pure helpers via a test seam: message conversion, PKCE,
+  metadata, catalog). +43 tests.
+- **Doc honesty** (openstarry_doc): isolation banners added to 5 un-banner'd
+  silent-fiction docs (Arch 04 plugin-registry, Arch 07 supporting-engines,
+  openclaw UI adapters, DeepDive 09 observability stack, ProjectStructure 09 CLI);
+  Plan60 binding stamped SHIPPED; plugins.md discloses 3 no-op library-wrapper
+  plugins (api-runtime/mesh/vasana-engine); count/cross-ref fixes.
+
+## [v0.59.6-alpha] — 2026-06-16 — partial→landed: build the buildable, honest-mark the rest
+
+A corpus-wide doc-vs-code classification (198 active docs: 64 landed / 27 partial /
+33 quarantined / 9 future-marked / 53 process-meta / 12 flagged drift, 11 confirmed)
+drove a build pass on the genuinely-buildable partials and an honesty pass on the rest.
+Verified: **302 test files / 3211 passed / 0 failed / 4 skipped**; build clean;
+purity PASS; cold smoke PASS.
+
+### New features (partial → landed by building)
+- **MessageRouter replay defense** (Doc 54, AT-1b/AT-5a): CommMessage id-dedup +
+  timestamp freshness window (`MAX_MESSAGE_AGE_MS` / `MAX_CLOCK_SKEW_MS`); fail-closed
+  reject of stale / future-dated / replayed messages (broadcasts too). +8 tests.
+- **Loop integrity self-check** (Doc 20 §4): `checkLoopIntegrity` wired non-fatally into
+  `agent-core.start()` — warns on vegetable (input, no cognition) / brain-in-vat
+  (cognition, no input). Paralysis case honestly deferred (no manifest requiredConfig).
+  +8 tests.
+- **CompositeChannel** (Doc 53 §11): `ICommChannel` reference impl composing children
+  under fallback / broadcast / pipeline; capability intersection, max depth 3. +16 tests.
+
+### Honest-marked (NOT built — would have been dead code)
+- **7-step crash recovery** (Deep Dive 07): detection + isolation are real; DLQ + restart/
+  hydration need architectural prerequisites (no production message buffer; PipelineChannel
+  not prod-instantiated; real child-process supervision) — marked, not stubbed-in.
+
+### Docs (openstarry_doc) — 11 confirmed drifts + 14 doc-stale reconciled
+- Stale/fictional API docs (18, Deep Dive 16, examples, etc.) → honest-correction banners
+  citing the real factory→PluginHooks + IProvider.chat + Zod ITool contract.
+- Plan57/58/59 bindings flipped "pending Ratification" → BINDING + SHIPPED (plugins exist,
+  20/23/42 tests); plugin counts, runner-deps claims, wiener-module amputation corrected.
+
 ## [v0.59.5-alpha] — 2026-06-16 — post-release drift-audit consistency patch
 
 Follows the v0.59.4 doc-vs-code gap closure with a post-release drift audit

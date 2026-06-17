@@ -31,6 +31,7 @@ export const AUDIT_OVERFLOW_EVENT = 'W_AUDIT_OVERFLOW';
 const SUBSCRIBED_TYPES: readonly AuditEventType[] = [
   'capability_denied',
   'ws_connection_denied',
+  'agent_request_denied',
 ];
 
 export interface AuditSinkOptions {

@@ -81,6 +81,20 @@ describe("createVedanaFn", () => {
     expect(result.channels).toHaveLength(2);
   });
 
+  it("Doc 36 §15: a custom VedanaClassificationConfig changes the classified type", () => {
+    const registry = createVedanaRegistry();
+    registry.register(makeSensor("s1", () => ({
+      valence: 0.3, intensity: 0.5, type: "sukha", source: "s1",
+    })));
+
+    // Default config (sukhaThreshold 0.1): valence 0.3 → sukha.
+    expect(createVedanaFn(registry)().aggregate.type).toBe("sukha");
+
+    // Wider band (sukhaThreshold 0.4): valence 0.3 falls in the upekkha zone.
+    const widened = createVedanaFn(registry, { dukkhaThreshold: -0.4, sukhaThreshold: 0.4 });
+    expect(widened().aggregate.type).toBe("upekkha");
+  });
+
   it("healthy sensor alongside throwing sensor: uses only healthy channel", () => {
     const registry = createVedanaRegistry();
     registry.register(makeSensor("ok-sensor", () => ({

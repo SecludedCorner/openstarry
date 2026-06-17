@@ -109,9 +109,9 @@ describe("plugin-installer", () => {
       consoleSpy.mockRestore();
       consoleErrSpy.mockRestore();
 
-      // installed + skipped + failed should equal 38
+      // installed + skipped + failed should equal 40
       const total = result.installed.length + result.skipped.length + result.failed.length;
-      expect(total).toBe(38);
+      expect(total).toBe(40);
     });
 
     it("skips already-installed plugins", { timeout: 120000 }, async () => {

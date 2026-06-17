@@ -20,10 +20,14 @@ export function hashEvent(event: AuditEvent): string {
 }
 
 function identifyingFields(event: AuditEvent): string {
-  if (event.type === 'capability_denied') {
-    return `${event.type}|${event.plugin}|${event.tool}`;
+  switch (event.type) {
+    case 'capability_denied':
+      return `${event.type}|${event.plugin}|${event.tool}`;
+    case 'ws_connection_denied':
+      return `${event.type}|${event.reason}|${event.remote ?? ''}|${event.origin ?? ''}`;
+    case 'agent_request_denied':
+      return `${event.type}|${event.reason}|${event.agentId}|${event.detail ?? ''}`;
   }
-  return `${event.type}|${event.reason}|${event.remote ?? ''}|${event.origin ?? ''}`;
 }
 
 export function dedupeKey(event: AuditEvent): string {

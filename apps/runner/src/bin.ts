@@ -46,7 +46,7 @@ async function main(): Promise<number> {
     console.log("  daemon start   Start agent in background daemon mode");
     console.log("  daemon stop    Stop a running daemon");
     console.log("  attach         Attach to a running daemon session");
-    console.log("  ps             List running agents");
+    console.log("  ps             List running agents (--tree shows the process hierarchy)");
     console.log("  init           Initialize OpenStarry configuration");
     console.log("  create-plugin  Scaffold a new OpenStarry plugin package");
     console.log("  plugin install  Install plugins from the official catalog");
@@ -61,6 +61,7 @@ async function main(): Promise<number> {
     console.log("Options:");
     console.log("  --config <path>      Path to agent config file");
     console.log("  --verbose            Show detailed output");
+    console.log("  --tree               (ps) Render the agent process tree (parent → children)");
     console.log("  --no-project-dir     Disable project-level .openstarry/ configuration for this run");
     console.log("  --resume             (start) Restore the previous CLI session's conversation history");
     console.log("  --help, -h           Show this help message");

@@ -24,7 +24,7 @@ import type {
   VedanaAssessment,
   ChannelVedana,
 } from "@openstarry/sdk";
-import { AgentEventType, getSessionConfig, classifyVedana, DEFAULT_VEDANA_CONFIG, SERVICE_KEYS } from "@openstarry/sdk";
+import { AgentEventType, getSessionConfig, classifyVedana, DEFAULT_VEDANA_CONFIG, validateVedanaConfig, SERVICE_KEYS } from "@openstarry/sdk";
 import { createLogger } from "@openstarry/shared";
 import { createEventBus } from "../bus/index.js";
 import { createEventQueue, type EventQueue } from "../execution/queue.js";
@@ -54,6 +54,7 @@ import {
   type MonitorRegistry,
   type CommChannelRegistry,
 } from "../infrastructure/index.js";
+import { logLoopIntegrity } from "../infrastructure/loop-integrity-check.js";
 import { createSecurityLayer, type SecurityLayer } from "../security/guardrails.js";
 import { createSafetyMonitor, type SafetyMonitor } from "../security/safety-monitor.js";
 import { createTransportBridge } from "../transport/bridge.js";
@@ -76,12 +77,15 @@ import {
   DEFAULT_KLESHA_MODULATION_CONFIG,
   DEFAULT_VEDANA_EMERGENCY_CONFIG,
 } from "@openstarry/sdk";
-import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig, KleshaModulationConfig, VedanaEmergencyConfig } from "@openstarry/sdk";
+import type { LoopQualityReport, SafetyMonitorConfig, ConfidenceAuditConfig, ManoAggregatorConfig, VitakkaWatchdogConfig, ExecutionConfig, KleshaFilterConfig, KleshaModulationConfig, VedanaEmergencyConfig, VedanaClassificationConfig } from "@openstarry/sdk";
 import { createAuditTrailWriter } from "../observability/audit-trail-writer.js";
 
 const logger = createLogger("AgentCore");
 
-export function createVedanaFn(registry: VedanaRegistry): () => VedanaAssessment {
+export function createVedanaFn(
+  registry: VedanaRegistry,
+  config: VedanaClassificationConfig = DEFAULT_VEDANA_CONFIG,
+): () => VedanaAssessment {
   const NEUTRAL: ChannelVedana = Object.freeze({
     valence: 0, intensity: 0, type: 'upekkha' as const, source: 'neutral',
   });
@@ -107,7 +111,7 @@ export function createVedanaFn(registry: VedanaRegistry): () => VedanaAssessment
     }
     const avgValence = channels.reduce((s, c) => s + c.valence, 0) / channels.length;
     const maxIntensity = Math.max(...channels.map(c => c.intensity));
-    const type = classifyVedana(avgValence, DEFAULT_VEDANA_CONFIG);
+    const type = classifyVedana(avgValence, config);
     const aggregate: ChannelVedana = {
       valence: avgValence, intensity: maxIntensity, type, source: 'aggregate',
     };
@@ -306,7 +310,15 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
   // consumers active the stateful filters advance at the combined call rate
   // (one consistent stream, different effective time-constants) — by design;
   // do NOT split into two perceiver sets.
-  const vedanaFn = createVedanaFn(vedanaRegistry);
+  // Doc 36 §15: per-agent vedana classification thresholds (opt-in via
+  // IAgentConfig.vedanaClassification; defaults preserved). Validated at start
+  // (fail-closed) against the Doc 36 §13 hard safety bounds.
+  const resolvedVedanaConfig: VedanaClassificationConfig = Object.freeze({
+    ...DEFAULT_VEDANA_CONFIG,
+    ...config.vedanaClassification,
+  });
+  validateVedanaConfig(resolvedVedanaConfig);
+  const vedanaFn = createVedanaFn(vedanaRegistry, resolvedVedanaConfig);
   const kleshaSignalFn = createKleshaSignalFn(kleshaPerceivers, vedanaFn, kleshaActionHistory);
 
   // TENET-2026-06-11 (Doc 37 closure): opt-in θ(t) modulation. Presence of
@@ -582,6 +594,17 @@ export function createAgentCore(config: IAgentConfig): AgentCore {
 
     async start(): Promise<void> {
       logger.info(`Starting agent: ${config.identity.name} (${config.identity.id})`);
+
+      // Doc 20 §4: control-loop integrity diagnostics (non-fatal warnings).
+      // Surfaces broken-loop shapes after plugin wiring — vegetable (input, no
+      // cognition) / brain-in-vat (cognition, no input). Logging only.
+      logLoopIntegrity(
+        {
+          providerCount: providerRegistry.list().length,
+          listenerCount: listenerRegistry.list().length,
+        },
+        logger,
+      );
 
       // Start transport bridge
       bridgeUnsub = bridge.start();
