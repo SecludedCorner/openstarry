@@ -45,6 +45,7 @@ import type { ICognitionConfigService } from "./cognition.js";
 import type { IDistributedAlaya } from "./distributed-alaya.js";
 import type { IDaemonSpawnService } from "./daemon-spawn.js";
 import type { IDaemonIntrospectService } from "./daemon-introspect.js";
+import type { IDaemonCommService } from "./daemon-comm.js";
 
 export const SERVICE_KEYS = {
   COGNITION_CONFIG: new ServiceKey<ICognitionConfigService>("cognition-config"),
@@ -53,6 +54,8 @@ export const SERVICE_KEYS = {
   DAEMON_SPAWN: new ServiceKey<IDaemonSpawnService>("daemon-spawn"),
   /** Read-only process-tree introspection — registered by the daemon (Doc 11). */
   DAEMON_INTROSPECT: new ServiceKey<IDaemonIntrospectService>("daemon-introspect"),
+  /** Cross-daemon agent↔agent messaging — registered by the daemon (Fractal Society C/T1). */
+  DAEMON_COMM: new ServiceKey<IDaemonCommService>("daemon-comm"),
 } as const;
 
 /**

@@ -1,5 +1,114 @@
 # CHANGELOG
 
+## [v0.59.8-alpha] — 2026-06-27 — Fractal Society: naming (A) + comm transport (C/T1–T4 + pipeline) + supervisor + fork/branch (B)
+
+Tenet #10 "好好實現". Two Master-ratified Spec Addenda land together (附錄紀律＝最嚴：
+interface + impl + tests in one delivery):
+
+**Addendum A — agent identity & naming** (was committed locally, shipped here):
+per-parent generation counter (restart-persistent), optional human `name`,
+auto-generated unique `<parent>-<gen>` ids, and a **fix for a real bug** —
+`agentRegistry.set` silently overwrote a same-named child; collisions now
+fail-closed. `ps --tree` shows `name [id] gen=N`. Real-daemon e2e.
+
+**Addendum C — cross-daemon comm transport.** This is the step that turns the
+daemon comm cluster (MessageRouter / EventBridge / GlobalServiceRegistry) from a
+validated-but-dead set of primitives into a **live transport**. Every cross-daemon
+message/event/registry call is HMAC-signed with the cluster key (C-2) and
+fail-closed validated; every rejection is journaled as a new `comm_denied` audit
+event. Honest scope: same-host, same-state-dir cluster (1 daemon = 1 agent →
+agent↔agent is always cross-process). Cross-host / N>2 gossip remain future.
+
+- **C/T1 — point-to-point messaging.** `MessageRouter` is promoted from a
+  validation layer to a real transport: `validateOutbound` (sender canSendTo) +
+  `validateInbound` (receiver canReceiveFrom + replay + freshness + envelope),
+  split because in 1-daemon-1-agent the two daemons each only know their own
+  agent's caps; the remote sender is authenticated by HMAC. New `CommTransport`
+  (generalizes the proven alaya `IpcRemotePeer`), `comm.deliver` / `comm.send` /
+  `comm.inbox` RPCs, bounded inbox + pushInput into the local loop. Two-process
+  e2e: A→B delivered; forged-sig / wrong-sender / replay all rejected & journaled.
+- **C/T2 — cluster pub/sub.** `EventBridge` gains its missing delivery layer
+  (`setDeliveryFn` was never called → events were computed then dropped).
+  Subscriber-initiated: `comm.subscribe` / `comm.event` (signed), `comm.subscribeTo`
+  / `eventbridge.publish` / `comm.events` control plane. Two-process e2e: A
+  subscribes to B; B's published events reach A; unsubscribed types + forged
+  events/subscriptions rejected.
+- **C/T3 — service discovery closure.** `GlobalServiceRegistry` had
+  register/lookup but nothing used a lookup result to talk to the discovered
+  peer. New signed `comm.register` / `comm.lookup` against a registry hub +
+  `comm.registerOn` / `comm.findPeer`. Three-daemon e2e: a provider registers a
+  service on a hub; a consumer discovers it by name and messages the discovered
+  peer — no static peer config.
+- **New plugin `@openstarry-plugin/agent-comm`** (6 tools): `agent.send` /
+  `agent.inbox` (T1), `agent.subscribe` / `agent.events` (T2), `agent.register` /
+  `agent.findPeer` (T3). Daemon-only; clear message when the service is absent.
+- **`comm_denied` audit reason** added to the daemon denial-audit pipeline.
+- **`--state-path` forwarded to spawned daemons** so a peer agentId resolves to
+  its daemon socket in the same-home fractal society.
+
+**Addendum C/T4 + topologies + supervisor (no new ratification — implements the
+frozen CommPerformative/CommTopology + SupervisorStrategy over the real transport):**
+- **C/T4 — performative/topology.** request-response (`comm.request` awaits a
+  correlated reply via `correlationId`, with timeout; `comm.reply`) + broadcast
+  (`comm.broadcast` fan-out, per-target result). agent-comm now 10 tools. e2e:
+  cross-process request→reply, timeout, broadcast.
+- **pipeline topology (A→B→C).** Source-routed relay over the transport: each
+  daemon relays a pipeline message to the next hop (capability-checked + signed per
+  hop; traceDepth-bounded; route/trail in metadata). 3-daemon e2e incl. a
+  mid-chain fail-closed break.
+- **supervisor restart strategy.** `SupervisorStrategy` was type-only; now the
+  daemon supervises children it spawned — a crashed child (pid dead while status
+  'running') is respawned per one-for-one / one-for-all / rest-for-one, bounded by
+  maxRestarts. `agent.supervise` tool. Pure selection unit-tested; e2e: crash →
+  auto-respawn, healthy child not spuriously restarted.
+
+**Addendum B — fork / branch (Master-ratified 2026-06-27):** fork = spawn + inject
+the parent's session snapshot as the child's initial session (D4-a); capabilities
+stay child ⊆ parent (D4-b, lattice NOT bypassed); memory/alaya NOT inherited
+(D4-c). branch = N forks off one snapshot (shared `forkOrigin`). merge/select =
+honest future. `agent.fork` / `agent.branch` tools (agent-spawn now 4 tools). e2e:
+child inherits the parent session; out-of-scope fork denied; branch group shares
+forkOrigin.
+
+**Doc 53 ICommChannel alignment — the abstraction is finally LIVE:** an audit found
+`ICommChannel` was a frozen contract whose `commChannelRegistry` was populated by the
+plugin loader but **never consumed** — `send()`/`onMessage()` did real work nowhere
+(`comm-pipeline`'s channel was an EventBus stub). New plugin
+**`@openstarry-plugin/comm-channel-p2p`** (skandha 色蘊/rupa) provides a real
+point-to-point `ICommChannel` ('messaging') whose `send()` delivers cross-daemon via
+the real DAEMON_COMM transport and whose `onMessage()` fires on real inbound. The
+daemon now **consumes the registry**: it `connect()`s registered channels at startup
+and dispatches every inbound CommMessage to them (`commChannelRegistry.list()` →
+`channel.deliverInbound`). `comm.channelList` / `comm.channelSend` / `comm.channelReceived`
+RPCs. Two-process e2e: A's `channel.send` reaches B's `channel.onMessage`; capability
+lattice still bites. (comm-pipeline / comm-proxy / CompositeChannel remain in-process
+composition reference impls — honestly marked.)
+
+**Build-integrity fix (latent, pre-existing):** `apps/runner/scripts/verify-plugin-deps.mjs`
+(the pre-publish guard requiring every workspace plugin in the runner's deps) was RED —
+11 plugins missing (9 predate this batch: agent-ask/introspect/spawn, api-runtime, mesh,
+provider-claude-cli, transport-local-cli, vasana-engine, context-keyword-retrieval; +
+agent-comm; + comm-channel-p2p). All 11 added; guard now green (**49 plugins verified**).
+
+**Pre-push adversarial audit hardening (4-lens skeptic pass over the later features):**
+the audit cleared purity / honesty / regression, and surfaced two fixes:
+- **(sec) request-response correlation binding** — `commDeliver` resolved a pending
+  request on a `correlationId` match WITHOUT checking the reply came from the agent the
+  request was sent to; a mis-sourced (even capability-allowed) reply could hijack it.
+  Now the pending entry stores its `target` and only a reply whose `source` == that
+  target resolves it; a mismatch is journaled (`comm_denied: CORRELATION_SOURCE`) and
+  falls through to normal delivery. New 3-daemon e2e: a wrong-peer reply cannot hijack.
+- **(correctness) supervisor restart budget** — `restartCount` only advanced on spawn
+  SUCCESS, so a child whose spawn PERSISTENTLY failed retried every tick forever. Now
+  the attempt is counted before spawning, so `maxRestarts` bounds total attempts.
+
+Verified: **323 test files / 3393 passed / 0 failed / 4 skipped**; build clean;
+purity PASS; verify-plugin-deps PASS (49); cold smoke boots healthy (only env
+claude-cli 401). New plugins `agent-comm` + `comm-channel-p2p` ⇒ **48 loadable /
+49 packages**. Honest future (not built): cross-host
+transport, N>2 gossip, depth>3, fork merge/select, performative semantics beyond
+request/inform.
+
 ## [v0.59.7-alpha] — 2026-06-16 — buildable_now batch: build the genuinely-buildable doc gaps
 
 A doc-vs-code buildable-gap study (8 dimensions, 39 findings, strict

@@ -113,6 +113,37 @@ describe('AuditSink (C48-M2)', () => {
     expect(a.audit_key).not.toBe(b.audit_key);
   });
 
+  it('⑦ agent_request_denied event is journaled (comm_denied, Fractal Society C/T1)', () => {
+    const bus = new AuditBus();
+    const { sinkFn, lines } = capture();
+    const sink = new AuditSink({ bus, sinkFn });
+    sink.attach();
+    bus.publish({
+      type: 'agent_request_denied',
+      reason: 'comm_denied',
+      agentId: 'agent-b',
+      detail: 'HMAC:agent-evil',
+      timestamp: ts,
+    });
+    bus.publish({
+      type: 'agent_request_denied',
+      reason: 'comm_denied',
+      agentId: 'agent-b',
+      detail: 'INBOUND:Receiver agent-b does not accept from agent-evil',
+      timestamp: ts,
+    });
+    sink.flushSync();
+    expect(lines.length).toBe(2);
+    const a = JSON.parse(lines[0]);
+    const b = JSON.parse(lines[1]);
+    expect(a.type).toBe('agent_request_denied');
+    expect(a.reason).toBe('comm_denied');
+    expect(a.detail).toBe('HMAC:agent-evil');
+    expect(b.reason).toBe('comm_denied');
+    // Distinct detail ⇒ distinct dedupe keys ⇒ both journaled.
+    expect(a.audit_key).not.toBe(b.audit_key);
+  });
+
   it('⑦ identical agent_request_denied events are deduped', () => {
     const bus = new AuditBus();
     const { sinkFn, lines } = capture();

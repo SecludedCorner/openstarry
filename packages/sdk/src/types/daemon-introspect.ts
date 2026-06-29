@@ -28,6 +28,10 @@ export interface DaemonChildAgentInfo {
   readonly uptime: number;
   readonly parentAgentId?: string;
   readonly childAgentIds: readonly string[];
+  /** Human-friendly label (Spec Addendum A); undefined ⇒ use agentId. */
+  readonly name?: string;
+  /** Per-parent birth-order (Spec Addendum A); undefined ⇒ root agent. */
+  readonly generation?: number;
 }
 
 /** A node in the agent process tree (max depth 3). */
@@ -37,6 +41,10 @@ export interface DaemonProcessTreeNode {
   readonly status: string;
   readonly depth: number;
   readonly children: readonly DaemonProcessTreeNode[];
+  /** Human-friendly label (Spec Addendum A); undefined ⇒ use agentId. */
+  readonly name?: string;
+  /** Per-parent birth-order (Spec Addendum A); undefined ⇒ root agent. */
+  readonly generation?: number;
 }
 
 /**

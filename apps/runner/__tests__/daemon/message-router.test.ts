@@ -252,3 +252,76 @@ describe("C11 — MessageRouter (Plan37, D2-R5)", () => {
     });
   });
 });
+
+// ── Cross-daemon split validation (Fractal Society C/T1) ─────────────────────
+// Each daemon only knows its own agent's caps: the SENDER daemon enforces
+// canSendTo (validateOutbound), the RECEIVER daemon enforces replay/freshness +
+// canReceiveFrom (validateInbound); the remote sender is NOT locally registered.
+describe("MessageRouter — validateOutbound (sender side, C/T1)", () => {
+  let router: MessageRouter;
+  beforeEach(() => {
+    router = new MessageRouter();
+    router.registerAgent("me", { canSendTo: ["peer"], canReceiveFrom: [], exposedTools: [] });
+  });
+
+  it("allows when local source canSendTo the target", () => {
+    expect(router.validateOutbound("me", "peer").allowed).toBe(true);
+  });
+  it("denies a target not in canSendTo (no wildcard)", () => {
+    const r = router.validateOutbound("me", "stranger");
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toMatch(/not allowed to send/);
+  });
+  it("denies an unregistered local source (fail-closed)", () => {
+    expect(router.validateOutbound("ghost", "peer").allowed).toBe(false);
+  });
+  it("honors the '*' wildcard", () => {
+    router.registerAgent("star", { canSendTo: ["*"], canReceiveFrom: [], exposedTools: [] });
+    expect(router.validateOutbound("star", "anyone").allowed).toBe(true);
+  });
+});
+
+describe("MessageRouter — validateInbound (receiver side, C/T1)", () => {
+  let router: MessageRouter;
+  beforeEach(() => {
+    router = new MessageRouter();
+    // Only the LOCAL receiver is registered; the remote sender is NOT (auth'd by HMAC upstream).
+    router.registerAgent("me", { canSendTo: [], canReceiveFrom: ["peer"], exposedTools: [] });
+  });
+
+  it("accepts a fresh message from an allowed remote source (sender not locally registered)", () => {
+    const r = router.validateInbound(makeMessage("peer", "me"));
+    expect(r.allowed).toBe(true);
+  });
+  it("denies a source the receiver does not accept (canReceiveFrom)", () => {
+    const r = router.validateInbound(makeMessage("stranger", "me"));
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toMatch(/does not accept from/);
+  });
+  it("denies when the local receiver is not registered", () => {
+    const r = router.validateInbound(makeMessage("peer", "unknown-receiver"));
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toMatch(/not registered/);
+  });
+  it("rejects a replayed id (AT-1b/5a)", () => {
+    const m = makeMessage("peer", "me");
+    expect(router.validateInbound(m).allowed).toBe(true);
+    expect(router.validateInbound(m).allowed).toBe(false); // same id again
+  });
+  it("rejects a stale message", () => {
+    const m = { ...makeMessage("peer", "me"), timestamp: Date.now() - MAX_MESSAGE_AGE_MS - 1000 };
+    expect(router.validateInbound(m).allowed).toBe(false);
+  });
+  it("rejects a future-dated message beyond clock skew", () => {
+    const m = { ...makeMessage("peer", "me"), timestamp: Date.now() + MAX_CLOCK_SKEW_MS + 1000 };
+    expect(router.validateInbound(m).allowed).toBe(false);
+  });
+  it("rejects traceDepth over the max", () => {
+    const m = makeMessage("peer", "me", MAX_TRACE_DEPTH + 1);
+    expect(router.validateInbound(m).allowed).toBe(false);
+  });
+  it("honors the receiver '*' wildcard", () => {
+    router.registerAgent("open", { canSendTo: [], canReceiveFrom: ["*"], exposedTools: [] });
+    expect(router.validateInbound(makeMessage("whoever", "open")).allowed).toBe(true);
+  });
+});

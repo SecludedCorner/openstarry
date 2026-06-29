@@ -63,6 +63,11 @@ export async function spawnDaemon(options: DaemonSpawnOptions): Promise<DaemonSp
       "--pid-file", pidFile,
       "--socket", socketPath,
       "--log-file", logFile,
+      // Fractal Society C/T1: the daemon resolves a peer's socket via
+      // getDefaultSocketPath(peerId, statePath); forwarding statePath lets a
+      // cross-daemon CommTransport reach siblings that share this state dir
+      // (the same-home fractal-society topology). Not secret → CLI arg is fine.
+      "--state-path", statePath,
     ],
     {
       detached: true,

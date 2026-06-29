@@ -69,12 +69,24 @@ export type {
   IDaemonSpawnService,
   DaemonSpawnChildInput,
   DaemonSpawnChildResult,
+  DaemonSuperviseResult,
+  DaemonForkInput,
+  DaemonForkResult,
+  DaemonBranchInput,
 } from "./types/daemon-spawn.js";
 export type {
   IDaemonIntrospectService,
   DaemonChildAgentInfo,
   DaemonProcessTreeNode,
 } from "./types/daemon-introspect.js";
+export type {
+  IDaemonCommService,
+  DaemonCommSendInput,
+  DaemonCommSendResult,
+  DaemonCoordinationEvent,
+  DaemonPeerEndpoint,
+  DaemonBroadcastResult,
+} from "./types/daemon-comm.js";
 export type { ICognitionConfigService } from "./types/cognition.js";
 
 export type {

@@ -329,7 +329,20 @@ export interface ListClientsResult {
  * FROZEN: Spec Addendum (2026-03-24, Cycle 20260324_cycle03-1).
  */
 export interface ChildAgentSpawnConfig {
-  agentId: string;
+  /**
+   * Child agent id (machine handle; filesystem-safe; unique per OPENSTARRY_HOME).
+   * Spec Addendum A (Fractal Society, 2026-06-26): now OPTIONAL — when omitted,
+   * the daemon auto-generates a unique `<parentId>-<generation>` id. When
+   * supplied, a collision with an existing running agent is rejected fail-closed
+   * (previously a same-id spawn silently overwrote the registry entry).
+   */
+  agentId?: string;
+  /**
+   * Optional human-friendly label for the child (Spec Addendum A). Non-unique,
+   * mutable, display-only — the agentId remains the machine key. Surfaced in
+   * `ps --tree` and agent introspection. Omitted ⇒ defaults to the agentId.
+   */
+  name?: string;
   configPath: string;
   statePath: string;
   env?: Record<string, string>;
@@ -373,6 +386,24 @@ export interface AgentRegistryEntry {
   parentAgentId?: string;
   /** IDs of all direct child agents (empty array if none). */
   childAgentIds: string[];
+  /**
+   * Human-friendly label (Spec Addendum A, Fractal Society 2026-06-26).
+   * Non-unique, display-only. undefined ⇒ fall back to agentId for display.
+   */
+  name?: string;
+  /**
+   * Per-parent birth-order (1-based) assigned at spawn (Spec Addendum A).
+   * Each parent counts its own children from 1; restart-persistent via
+   * GenerationCounter. undefined = root agent (no parent).
+   */
+  generation?: number;
+  /**
+   * Fork provenance (Spec Addendum B, Fractal Society 2026-06-27). Set when this
+   * child was created by fork/branch: `<parentId>:<parentSessionId>` — the
+   * parent-snapshot it was forked from. Children branched from the SAME snapshot
+   * share this value (a branch group). undefined ⇒ plain spawn (no inheritance).
+   */
+  forkOrigin?: string;
 }
 
 /**

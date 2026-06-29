@@ -26,6 +26,10 @@ export interface RenderTreeNode {
   pid: number;
   status: string;
   children: RenderTreeNode[];
+  /** Human-friendly label (Spec Addendum A); optional. */
+  name?: string;
+  /** Per-parent birth-order (Spec Addendum A); optional. */
+  generation?: number;
 }
 
 /** Map daemon-internal ProcessTreeNode[] (RPC payload) to RenderTreeNode[]. */
@@ -35,6 +39,8 @@ export function toRenderTreeNodes(nodes: ProcessTreeNode[]): RenderTreeNode[] {
     pid: n.entry.pid,
     status: n.entry.status,
     children: toRenderTreeNodes(n.children ?? []),
+    ...(n.entry.name !== undefined ? { name: n.entry.name } : {}),
+    ...(n.entry.generation !== undefined ? { generation: n.entry.generation } : {}),
   }));
 }
 
@@ -62,7 +68,11 @@ export function renderProcessTreeLines(roots: RenderTreeNode[]): string[] {
   const lines: string[] = [];
   const render = (node: RenderTreeNode, depth: number): void => {
     const indent = "  ".repeat(depth);
-    lines.push(`${indent}${node.agentId} (pid ${node.pid}) [${node.status}] depth=${depth}`);
+    // Show a human label when it differs from the id; append generation when present.
+    const label =
+      node.name && node.name !== node.agentId ? `${node.name} [${node.agentId}]` : node.agentId;
+    const gen = node.generation !== undefined ? ` gen=${node.generation}` : "";
+    lines.push(`${indent}${label} (pid ${node.pid}) [${node.status}]${gen} depth=${depth}`);
     for (const c of node.children) render(c, depth + 1);
   };
   for (const r of roots) render(r, 0);

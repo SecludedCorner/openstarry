@@ -168,3 +168,33 @@ describe("ps --tree — IPC failure fallback", () => {
     expect(lines).toEqual(["unreachable (pid 999) [unknown] depth=0"]);
   });
 });
+
+describe("ps --tree — name + generation (Spec Addendum A)", () => {
+  it("shows a human name [id] and gen= when present", () => {
+    const nodes: RenderTreeNode[] = [
+      {
+        agentId: "root",
+        pid: 1,
+        status: "running",
+        children: [
+          { agentId: "root-1", pid: 2, status: "running", name: "worker", generation: 1, children: [] },
+        ],
+      },
+    ];
+    const lines = renderProcessTreeLines(nodes);
+    expect(lines[0]).toBe("root (pid 1) [running] depth=0"); // root has no name/gen → unchanged
+    expect(lines[1]).toBe("  worker [root-1] (pid 2) [running] gen=1 depth=1");
+  });
+
+  it("omits the [id] suffix when name equals the id, but still shows gen", () => {
+    const nodes: RenderTreeNode[] = [
+      { agentId: "root-2", pid: 3, status: "running", name: "root-2", generation: 2, children: [] },
+    ];
+    expect(renderProcessTreeLines(nodes)).toEqual(["root-2 (pid 3) [running] gen=2 depth=0"]);
+  });
+
+  it("is backward-compatible: nodes without name/generation render exactly as before", () => {
+    const nodes: RenderTreeNode[] = [{ agentId: "a", pid: 9, status: "running", children: [] }];
+    expect(renderProcessTreeLines(nodes)).toEqual(["a (pid 9) [running] depth=0"]);
+  });
+});

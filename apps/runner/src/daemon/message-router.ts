@@ -87,43 +87,9 @@ export class MessageRouter {
       return { allowed: true };
     }
 
-    // SEC-005 traceDepth enforcement (Plan38 C3):
-    // Validate traceDepth is a non-negative integer when defined. Reject malformed
-    // values (negative, float, NaN) to prevent bypass. Undefined = first hop (allowed).
-    if (message.traceDepth !== undefined) {
-      if (!Number.isInteger(message.traceDepth) || message.traceDepth < 0) {
-        return {
-          allowed: false,
-          reason: `traceDepth must be a non-negative integer, got ${message.traceDepth}`,
-        };
-      }
-      if (message.traceDepth > MAX_TRACE_DEPTH) {
-        return {
-          allowed: false,
-          reason: `traceDepth ${message.traceDepth} exceeds MAX_TRACE_DEPTH (${MAX_TRACE_DEPTH})`,
-        };
-      }
-    }
-
-    // SEC-008 (Plan38 C13): Metadata size limit.
-    // MECHANISM: fail-closed validation of metadata entries and value sizes.
-    if (message.metadata !== undefined) {
-      const entries = Object.entries(message.metadata);
-      if (entries.length > MAX_COMM_METADATA_ENTRIES) {
-        return {
-          allowed: false,
-          reason: `metadata has ${entries.length} entries, max ${MAX_COMM_METADATA_ENTRIES}`,
-        };
-      }
-      for (const [key, value] of entries) {
-        if (typeof value === 'string' && value.length > MAX_COMM_METADATA_VALUE_SIZE) {
-          return {
-            allowed: false,
-            reason: `metadata["${key}"] value size ${value.length} exceeds max ${MAX_COMM_METADATA_VALUE_SIZE}`,
-          };
-        }
-      }
-    }
+    // SEC-005 traceDepth + SEC-008 metadata limits (shared envelope checks).
+    const envelope = this.checkEnvelopeLimits(message);
+    if (!envelope.allowed) return envelope;
 
     const receiverCaps = this.capabilities.get(receiverId);
     if (!receiverCaps) {
@@ -142,6 +108,97 @@ export class MessageRouter {
     }
 
     this.markSeen(message);
+    return { allowed: true };
+  }
+
+  /**
+   * Cross-daemon OUTBOUND check (sender side, Fractal Society C/T1). The local
+   * SOURCE agent must be registered and its canSendTo must permit the target.
+   * The receiver's acceptance policy + replay/freshness are enforced
+   * independently by the receiving daemon (validateInbound) — in the
+   * 1-daemon-per-agent model each daemon only knows its own agent's caps.
+   */
+  validateOutbound(source: string, target: string): MessageRouteResult {
+    const caps = this.capabilities.get(source);
+    if (!caps) {
+      return { allowed: false, reason: `Sender ${source} not registered` };
+    }
+    if (!caps.canSendTo.includes(target) && !caps.canSendTo.includes('*')) {
+      return { allowed: false, reason: `Sender ${source} not allowed to send to ${target}` };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Cross-daemon INBOUND check (receiver side, Fractal Society C/T1), run AFTER
+   * the caller has HMAC-verified the message (so `source` is unforgeable). The
+   * remote sender is NOT locally registered — its identity comes from the HMAC,
+   * and its canSendTo was enforced by the sending daemon (validateOutbound).
+   * Here we enforce: replay + freshness (AT-1b/5a) + envelope limits + the local
+   * RECEIVER agent's canReceiveFrom. Records the id on accept (replay defense).
+   */
+  validateInbound(message: CommMessage): MessageRouteResult {
+    const replay = this.checkReplay(message);
+    if (!replay.allowed) return replay;
+
+    const envelope = this.checkEnvelopeLimits(message);
+    if (!envelope.allowed) return envelope;
+
+    const receiverId = message.target;
+    if (!receiverId) {
+      return { allowed: false, reason: `inbound message has no target (T1 is point-to-point)` };
+    }
+    const receiverCaps = this.capabilities.get(receiverId);
+    if (!receiverCaps) {
+      return { allowed: false, reason: `Receiver ${receiverId} not registered` };
+    }
+    if (
+      !receiverCaps.canReceiveFrom.includes(message.source) &&
+      !receiverCaps.canReceiveFrom.includes('*')
+    ) {
+      return { allowed: false, reason: `Receiver ${receiverId} does not accept from ${message.source}` };
+    }
+
+    this.markSeen(message);
+    return { allowed: true };
+  }
+
+  /**
+   * SEC-005 traceDepth + SEC-008 metadata size limits (shared by validateMessage
+   * and validateInbound). Pure — does not record anything.
+   */
+  private checkEnvelopeLimits(message: CommMessage): MessageRouteResult {
+    if (message.traceDepth !== undefined) {
+      if (!Number.isInteger(message.traceDepth) || message.traceDepth < 0) {
+        return {
+          allowed: false,
+          reason: `traceDepth must be a non-negative integer, got ${message.traceDepth}`,
+        };
+      }
+      if (message.traceDepth > MAX_TRACE_DEPTH) {
+        return {
+          allowed: false,
+          reason: `traceDepth ${message.traceDepth} exceeds MAX_TRACE_DEPTH (${MAX_TRACE_DEPTH})`,
+        };
+      }
+    }
+    if (message.metadata !== undefined) {
+      const entries = Object.entries(message.metadata);
+      if (entries.length > MAX_COMM_METADATA_ENTRIES) {
+        return {
+          allowed: false,
+          reason: `metadata has ${entries.length} entries, max ${MAX_COMM_METADATA_ENTRIES}`,
+        };
+      }
+      for (const [key, value] of entries) {
+        if (typeof value === 'string' && value.length > MAX_COMM_METADATA_VALUE_SIZE) {
+          return {
+            allowed: false,
+            reason: `metadata["${key}"] value size ${value.length} exceeds max ${MAX_COMM_METADATA_VALUE_SIZE}`,
+          };
+        }
+      }
+    }
     return { allowed: true };
   }
 

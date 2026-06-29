@@ -57,6 +57,17 @@
     "@openstarry-plugin/guide-persistent": "workspace:*",
     "@openstarry-plugin/spc-monitor": "workspace:*",
     "@openstarry-plugin/vedana-sensor-core": "workspace:*",
+    "@openstarry-plugin/agent-ask": "workspace:*",
+    "@openstarry-plugin/agent-introspect": "workspace:*",
+    "@openstarry-plugin/agent-spawn": "workspace:*",
+    "@openstarry-plugin/agent-comm": "workspace:*",
+    "@openstarry-plugin/comm-channel-p2p": "workspace:*",
+    "@openstarry-plugin/context-keyword-retrieval": "workspace:*",
+    "@openstarry-plugin/api-runtime": "workspace:*",
+    "@openstarry-plugin/mesh": "workspace:*",
+    "@openstarry-plugin/provider-claude-cli": "workspace:*",
+    "@openstarry-plugin/transport-local-cli": "workspace:*",
+    "@openstarry-plugin/vasana-engine": "workspace:*",
     "zod": "^3.23.0"
   },
   "devDependencies": {

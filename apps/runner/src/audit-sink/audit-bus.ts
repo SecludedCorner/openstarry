@@ -43,11 +43,16 @@ export interface WsConnectionDeniedEvent {
  *   - 'rate_limited': DualRateLimiter rejected an agent.input (-32005).
  *   - 'spawn_constraint': handleSpawnChild denied an agent.spawnChild
  *     (DRAINING / path-traversal / capability / depth-budget-ceiling).
- * `detail` carries the specific sub-reason (e.g. 'DRAINING', 'CEILING_EXCEEDED').
+ *   - 'comm_denied': comm.deliver / comm.send rejected a cross-daemon agent↔agent
+ *     message (Fractal Society C/T1, Spec Addendum C) — HMAC verification,
+ *     capability (canSendTo/canReceiveFrom), replay/freshness, or malformed
+ *     envelope. The new cross-process attack surface; every rejection is journaled.
+ * `detail` carries the specific sub-reason (e.g. 'DRAINING', 'CEILING_EXCEEDED',
+ * 'HMAC:<source>', 'INBOUND:<reason>').
  */
 export interface AgentRequestDeniedEvent {
   readonly type: 'agent_request_denied';
-  readonly reason: 'rate_limited' | 'spawn_constraint';
+  readonly reason: 'rate_limited' | 'spawn_constraint' | 'comm_denied';
   readonly agentId: string;
   readonly detail?: string;
   readonly timestamp: string;
