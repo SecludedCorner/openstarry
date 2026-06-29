@@ -9,6 +9,13 @@
       "tags": ["standard", "filesystem"]
     },
     {
+      "name": "@openstarry-plugin/standard-function-exec",
+      "description": "Guarded command execution (execFile, no shell; default-off allowShell gate, allowlist + denylist, injection rejection)",
+      "version": "0.19.0",
+      "aggregates": ["ITool"],
+      "tags": ["standard", "exec", "security"]
+    },
+    {
       "name": "@openstarry-plugin/standard-function-stdio",
       "description": "Standard I/O input and output tools",
       "version": "0.19.0",

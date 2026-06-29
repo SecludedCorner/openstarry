@@ -2,10 +2,10 @@
  * SecurityLayer — tool call interception, path safety, guardrails.
  */
 
-import { resolve, normalize, dirname, basename } from "node:path";
-import { realpathSync, lstatSync } from "node:fs";
+import { resolve, normalize } from "node:path";
+import { lstatSync } from "node:fs";
 import { SecurityError, SessionConfig, getSessionConfig } from "@openstarry/sdk";
-import { createLogger } from "@openstarry/shared";
+import { createLogger, safeRealpath, isWithinRoots } from "@openstarry/shared";
 
 const logger = createLogger("Security");
 
@@ -30,22 +30,6 @@ export function isPathSafe(basePath: string, targetPath: string): boolean {
   return resolvedTarget === resolvedBase ||
     resolvedTarget.startsWith(resolvedBase + "/") ||
     resolvedTarget.startsWith(resolvedBase + "\\");
-}
-
-function safeRealpath(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    // File doesn't exist yet — resolve parent to catch symlinks in ancestors
-    const resolved = resolve(normalize(p));
-    const parent = dirname(resolved);
-    const tail = basename(resolved);
-    try {
-      return resolve(realpathSync(parent), tail);
-    } catch {
-      return resolved;
-    }
-  }
 }
 
 export interface SecurityLayer {
@@ -88,9 +72,7 @@ export function createSecurityLayer(
           // Session paths must be subset of agent paths
           const sessionPaths = sessionConfig.allowedPaths.map(p => safeRealpath(p));
           const validSessionPaths = sessionPaths.filter(sessionPath =>
-            normalizedAllowed.some(agentPath =>
-              sessionPath === agentPath || sessionPath.startsWith(agentPath + "/") || sessionPath.startsWith(agentPath + "\\")
-            )
+            isWithinRoots(sessionPath, normalizedAllowed)
           );
 
           if (validSessionPaths.length < sessionPaths.length) {
@@ -105,11 +87,7 @@ export function createSecurityLayer(
         }
       }
 
-      const isAllowed = effectivePaths.some((allowed) => {
-        return normalizedTarget === allowed || normalizedTarget.startsWith(allowed + "/") || normalizedTarget.startsWith(allowed + "\\");
-      });
-
-      if (!isAllowed) {
+      if (!isWithinRoots(normalizedTarget, effectivePaths)) {
         logger.warn(`Path blocked: ${normalizedTarget}`);
         throw new SecurityError(
           `Path "${targetPath}" is outside the allowed scope. Allowed: ${effectivePaths.join(", ")}`,

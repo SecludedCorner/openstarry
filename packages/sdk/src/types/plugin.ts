@@ -27,7 +27,11 @@ export interface PluginManifest {
   description?: string;
   author?: string;
 
-  /** Sandbox configuration (optional, default: enabled with 512MB limit) */
+  /**
+   * Sandbox configuration (optional, OPT-IN). When this object is ABSENT the
+   * plugin runs IN-PROCESS with NO worker-thread isolation. Worker isolation is
+   * engaged only when `sandbox.enabled === true` (see PluginLoader). Off by default.
+   */
   sandbox?: SandboxConfig;
 
   /**
@@ -111,7 +115,11 @@ export type PluginCriticality = 'required' | 'optional-degraded' | 'optional-no-
 
 /** Sandbox configuration for a plugin. */
 export interface SandboxConfig {
-  /** Enable/disable sandbox isolation. Default: true */
+  /**
+   * Enable worker-thread isolation for this plugin. OPT-IN: a plugin runs
+   * in-process unless this is explicitly `true` (the loader gates on
+   * `sandbox?.enabled === true`). There is no implicit default-on.
+   */
   enabled: boolean;
 
   /** Memory limit in megabytes. Default: 512 */

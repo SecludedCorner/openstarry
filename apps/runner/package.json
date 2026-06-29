@@ -21,6 +21,7 @@
     "@openstarry/shared": "workspace:*",
     "@openstarry-plugin/provider-gemini-oauth": "workspace:*",
     "@openstarry-plugin/standard-function-fs": "workspace:*",
+    "@openstarry-plugin/standard-function-exec": "workspace:*",
     "@openstarry-plugin/standard-function-stdio": "workspace:*",
     "@openstarry-plugin/standard-function-skill": "workspace:*",
     "@openstarry-plugin/guide-character-init": "workspace:*",

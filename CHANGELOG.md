@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## [v0.59.9-alpha] — 2026-06-29 — Sandbox / Security hardening: live worker isolation + PathGuard on the live path + command-execution guard
+
+Three Master-ratified security increments. Motivation: an adversarial study found the
+project's flagship worker-thread plugin sandbox was **dormant and mis-marked** — wired into
+every AgentCore but enabled by no shipped plugin, exercised by no real-worker test (every
+sandbox test mocked `node:worker_threads`), and its SDK JSDoc falsely claimed `default: true`.
+That violates the project's own "live-or-honestly-marked" criterion. These three changes
+close the gap honestly, all microkernel-pure, each with a REAL (non-mock) e2e.
+
+**① Worker sandbox made genuinely LIVE + mis-marking corrected.** New real-worker e2e
+(`packages/core/__tests__/e2e/sandbox-live.e2e.test.ts`) spawns an ACTUAL
+`node:worker_threads` Worker on the compiled `plugin-worker-runner` (no `vi.mock`) and proves
+four behaviors end-to-end: tool RPC round-trip; a forbidden `require('fs')` blocked at runtime
+by the CommonJS `Module._load` patch; an ESM static import of a forbidden builtin rejected
+pre-spawn by the static import-analyzer; and a real V8 OOM tripping the dedicated worker's
+`resourceLimits` memory cap. Committed dependency-free `.mjs` fixtures under
+`__tests__/fixtures/sandbox-plugins/`. **Honesty fixes:** corrected the SDK `SandboxConfig`
+JSDoc (sandbox is opt-in / off-by-default, NOT `default: true`), and documented in
+`plugin-worker-runner.ts` that `Module._load` is **CommonJS-only** — ESM `import` enforcement
+relies on the pre-spawn static analyzer, not a runtime hook (a real, now-documented boundary).
+Honest scope: the heartbeat stall-kill is not asserted in the e2e (its monitor fires on a
+fixed 45s cadence — impractical for CI; stays covered by the mocked `sandbox-heartbeat.test.ts`).
+
+**② Symlink-aware PathGuard moved onto the LIVE filesystem tool path.** The live `fs` tool
+validated paths lexically (resolve+normalize, no `realpath`), so a symlink placed inside an
+allowed directory that pointed outside it escaped the jail. Extracted the symlink-aware
+realpath jail into `@openstarry/shared` (`security/realpath-jail.ts` — single source of truth);
+core's `SecurityLayer` now delegates to it (behavior byte-identical, regression tests
+unchanged) and `standard-function-fs` uses it instead of its own lexical check. Real e2e
+creates an in-jail symlink (junction) targeting outside and asserts read/write rejection, with
+a control proving new-file writes still work. Microkernel purity preserved (shared is already a
+permitted core/plugin dependency; the execution loop is untouched).
+
+**③ Command-execution guard plugin (`@openstarry-plugin/standard-function-exec`).** Realizes
+the (quarantined) Tech Spec 05 command-whitelist intent as a purity-clean ITool. `exec.run`
+runs a single command via `child_process.execFile` with `shell:false` — argv never reaches a
+shell (the real boundary) — gated by a default-OFF `allowShell` master switch, an exact-match
+executable allowlist (fail-closed), shell-metacharacter rejection, and a defense-in-depth
+denylist. On block it throws `SecurityError` and emits the EXISTING `AgentEventType.TOOL_BLOCKED`
+event (zero new SDK surface — `audit:capability_denied` is not an SDK event). Policy is
+plugin-local (`src/policy.ts`), merged under agent.json config. Unit tests + a real-process e2e
+(`node -e` runs for real; a compound `cat … && rm x` is blocked pre-spawn and audited). Honest
+scope: this is a guard, **not a sandbox** — a permitted command still runs with the agent's OS
+privileges; denylists are defense-in-depth, not a containment guarantee. Plugins 48→49 loadable
+(catalog 40→41 entries).
+
+- Baseline: **328 files / 3422 passed / 0 failed / 4 skipped**; build / purity / verify-plugin-deps (50) green.
+- Microkernel (`packages/core`) purity preserved: increment ② adds only a `@openstarry/shared`
+  import (already permitted) and the loop is unchanged; increment ③ touches zero core; increment
+  ① is test-only fixtures/e2e plus comment-only SDK/worker-runner honesty fixes.
+
 ## [v0.59.8-alpha] — 2026-06-27 — Fractal Society: naming (A) + comm transport (C/T1–T4 + pipeline) + supervisor + fork/branch (B)
 
 Tenet #10 "好好實現". Two Master-ratified Spec Addenda land together (附錄紀律＝最嚴：

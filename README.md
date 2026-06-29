@@ -2,7 +2,7 @@
 
 A local AI Agent framework — microkernel + plugin-driven. Get your first AI Agent running in 3 minutes.
 
-Version: **v0.59.8-alpha** | Tests: **3393 passed / 0 failed** | Plugins: **48** | License: **Apache-2.0**
+Version: **v0.59.9-alpha** | Tests: **3422 passed / 0 failed** | Plugins: **49** | License: **Apache-2.0**
 
 [繁體中文](./README_TW.md)
 

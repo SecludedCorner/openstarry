@@ -6,6 +6,7 @@
     { "path": "packages/core" },
     { "path": "../openstarry_plugin/provider-gemini-oauth" },
     { "path": "../openstarry_plugin/standard-function-fs" },
+    { "path": "../openstarry_plugin/standard-function-exec" },
     { "path": "../openstarry_plugin/standard-function-stdio" },
     { "path": "../openstarry_plugin/guide-character-init" },
     { "path": "../openstarry_plugin/standard-function-skill" },

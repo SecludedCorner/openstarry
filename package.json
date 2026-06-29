@@ -1,6 +1,6 @@
 {
   "name": "openstarry",
-  "version": "0.59.8-alpha",
+  "version": "0.59.9-alpha",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",

@@ -4,8 +4,16 @@
  */
 
 // ─── Runtime Module._load interception (secondary defense layer) ───
-// Install before any plugin code loads to catch ALL CommonJS imports of forbidden modules.
-// Uses Module._load patching for comprehensive interception (replaces globalThis.require Proxy).
+// Install before any plugin code loads to catch forbidden modules pulled in via
+// CommonJS resolution (require()/createRequire()/Module._load).
+//
+// HONEST SCOPE (v0.59.9): this hook is CommonJS-ONLY. ESM `import 'fs'` and dynamic
+// `await import('fs')` do NOT go through Module._load and are therefore NOT blocked
+// here. ESM forbidden-import enforcement is handled at LOAD time by the static
+// import-analyzer (validatePluginImports, sandbox-manager Step 1.5), which parses the
+// plugin source before the worker spawns. Treat the two as complementary layers, not
+// a single comprehensive runtime gate — there is no runtime ESM interception without a
+// custom module-customization hook (a deliberately deferred future item).
 import Module from "node:module";
 
 const RUNTIME_FORBIDDEN_MODULES = [

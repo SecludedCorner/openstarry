@@ -13,6 +13,9 @@ export { AgentEventType } from "./constants/events.js";
 export { SecureStore } from "./security/secure-store.js";
 export type { SecureStoreOptions, EncryptedPayload } from "./security/secure-store.js";
 
+export { safeRealpath, isWithinRoots, realpathJail } from "./security/realpath-jail.js";
+export type { RealpathJailOptions } from "./security/realpath-jail.js";
+
 export { validateRegexSafety, safeRegexTest, DEFAULT_MAX_INPUT_LEN } from "./utils/safe-regex.js";
 
 export {

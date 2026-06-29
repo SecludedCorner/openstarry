@@ -24,9 +24,9 @@ describe("plugin-catalog", () => {
       expect(Array.isArray(catalog.plugins)).toBe(true);
     });
 
-    it("contains 40 official plugins", () => {
+    it("contains 41 official plugins", () => {
       const catalog = loadCatalog();
-      expect(catalog.plugins).toHaveLength(40);
+      expect(catalog.plugins).toHaveLength(41);
     });
 
     it("each plugin has required fields", () => {
@@ -101,9 +101,9 @@ describe("plugin-catalog", () => {
   });
 
   describe("getAllCatalogEntries", () => {
-    it("returns all 40 entries", () => {
+    it("returns all 41 entries", () => {
       const entries = getAllCatalogEntries();
-      expect(entries).toHaveLength(40);
+      expect(entries).toHaveLength(41);
     });
 
     it("returns the same data as loadCatalog().plugins", () => {
